@@ -45,6 +45,11 @@ BOOKING_NOT_FOUND_DOC = error_doc(
             "request body must be a JSON object",
         ),
         404: error_doc("The slot doesn't exist.", "slot not found"),
+        409: error_doc(
+            "The slot already has a confirmed booking. Holds under simultaneous requests: "
+            "Postgres allows one confirmed booking per slot, so exactly one of them wins.",
+            "slot already booked",
+        ),
         500: INTERNAL_ERROR_DOC,
     },
 )

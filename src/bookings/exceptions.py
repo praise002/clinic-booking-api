@@ -1,4 +1,4 @@
-from src.core.exceptions import BadRequest, NotFound
+from src.core.exceptions import BadRequest, Conflict, NotFound
 
 
 class BookingNotFound(NotFound):
@@ -17,3 +17,7 @@ class InvalidBookingField(BadRequest):
 
 class SlotStarted(BadRequest):
     message = "slot has already started"
+
+
+class SlotAlreadyBooked(Conflict):
+    message = "slot already booked"

@@ -18,3 +18,7 @@ class NotFound(AppError):
 
 class BadRequest(AppError):
     message = "bad request"
+
+
+class Conflict(AppError):
+    message = "conflict"

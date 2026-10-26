@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from src.core.exceptions import AppError, BadRequest, NotFound
+from src.core.exceptions import AppError, BadRequest, Conflict, NotFound
 
 log = logging.getLogger(__name__)
 
@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 STATUS_BY_ERROR: list[tuple[type[AppError], int]] = [
     (NotFound, status.HTTP_404_NOT_FOUND),
     (BadRequest, status.HTTP_400_BAD_REQUEST),
+    (Conflict, status.HTTP_409_CONFLICT),
 ]
 
 

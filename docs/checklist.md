@@ -41,7 +41,7 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   Learner check: On the page, try booking with an empty name, then `not-an-email`, then a slot in the past (reset one in from Admin). Each should give a clear message with your inputs still in the form. In Admin, try a wrong key and see "Wrong API key". Then `curl localhost:8070/slots` with no key and see a 401.
   Commit: `Add Level 2: API key auth and booking validation` (API repo), `Show booking error messages` (frontend repo); then `verify level-2`
 
-- [ ] **4. Level 3: two people can never book the same slot — proven with 50 at once**
+- [x] **4. Level 3: two people can never book the same slot — proven with 50 at once**
   Becomes usable: A booking for a slot that already has a confirmed booking returns `409 {"error": "slot already booked"}`. 50 simultaneous requests for one slot give exactly one 201 and 49 409s, with no 5xx, leaving exactly one confirmed row, both in tests and against the running compose API with two gunicorn workers. On the page, a 409 says someone just booked the slot and refreshes the list.
   Why now: This is the unique kernel (`scope.md > The Unique Kernel`). It comes first in Level 3, as its own slice, so the proof isn't buried under cancel work. The partial unique index has existed since slice 1; this slice maps its violation to 409, sizes the connection pool, and proves that it holds.
   PRD ref: `prd.md > API Contract` (Concurrency), `prd.md > Booking Errors` (409)

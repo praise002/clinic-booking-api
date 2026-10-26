@@ -205,6 +205,11 @@ def main() -> int:
         r.text,
     )
 
+    # ── Level 3 ──────────────────────────────────────────────────────────────
+    # (The simultaneous-bookings proof is scripts/concurrency.py.)
+    r = client.post("/bookings", json={**good_booking, "email": "someone.else@example.com"})
+    check("booking an already-booked slot is 409", is_error(r, 409, "slot already booked"), r.text)
+
     # ── Reset wipes bookings (last: it empties the target) ───────────────────
     r = client.post("/reset", json={"slots": slots})
     r = client.get(f"/bookings/{booking.get('id')}")
