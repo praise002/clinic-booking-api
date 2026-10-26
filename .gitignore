@@ -15,3 +15,8 @@ __pycache__/
 
 # Railway IaC dependencies
 .railway/node_modules/
+.vercel
+.env*
+
+# Personal reference notes (not part of the project)
+rough/

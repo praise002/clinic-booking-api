@@ -23,3 +23,6 @@ task-1.md
 **/__pycache__/
 .pytest_cache/
 .ruff_cache/
+
+# Personal reference notes
+rough/

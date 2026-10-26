@@ -18,3 +18,4 @@ compose.yaml
 tests/
 Makefile
 .python-version
+rough/
