@@ -4,8 +4,8 @@ A booking API for a small clinic: list appointment slots, book one, look a booki
 
 | | |
 |---|---|
-| **API** | `<API_URL>` (Vercel) |
-| **API docs** | `<API_URL>/docs` (the bare `<API_URL>` redirects there) (no key needed to read them; press **Authorize** and enter the key to try endpoints) |
+| **API** | https://clinic-booking-api-indol.vercel.app (Vercel + Neon Postgres + Upstash Redis) |
+| **API docs** | https://clinic-booking-api-indol.vercel.app/docs (the bare URL redirects there; no key needed to read them; press **Authorize** and enter the key to try endpoints) |
 | **Web page** | `<WEB_URL>` ([`clinic-booking-frontend`](../clinic-booking-frontend)) |
 
 Every request except `GET /health` (and the docs) needs the `X-API-Key` header. Every error is `{"error": "<message>"}`.
