@@ -4,6 +4,7 @@ import re
 import uuid
 
 from httpx import AsyncClient
+import pytest
 
 CREATED_AT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 
@@ -212,3 +213,28 @@ async def test_health(client: AsyncClient):
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("GET", "/bookings/"), ("GET", "/slots/"), ("POST", "/bookings/"), ("GET", "/health/")],
+)
+async def test_a_trailing_slash_is_a_404_not_a_redirect(client: AsyncClient, method, path):
+    response = await client.request(method, path, json={})
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "not found"}
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        ("postgres://u:p@h:5432/db", "postgresql+asyncpg://u:p@h:5432/db"),
+        ("postgresql://u:p@h:5432/db", "postgresql+asyncpg://u:p@h:5432/db"),
+        ("postgresql+asyncpg://u:p@h:5432/db", "postgresql+asyncpg://u:p@h:5432/db"),
+    ],
+)
+def test_host_database_urls_get_the_asyncpg_driver(given: str, expected: str):
+    from src.config import use_asyncpg
+
+    assert use_asyncpg(given) == expected

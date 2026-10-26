@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import math
 from pathlib import Path
@@ -24,6 +25,12 @@ def normalise_email(email: object) -> str | None:
     return email.strip().lower()
 
 
+def counter_key(email: str) -> str:
+    """A fixed-size Redis key per email. The email isn't validated yet when it's counted
+    (failed attempts count too), so hashing stops junk input from making huge keys."""
+    return KEY_PREFIX + hashlib.sha256(email.encode()).hexdigest()
+
+
 async def check_and_record(email: str) -> None:
     """Record one booking attempt for this email, or raise TooManyRequests (429).
 
@@ -34,7 +41,7 @@ async def check_and_record(email: str) -> None:
     window_ms = constants.WINDOW_SECONDS * 1000
     try:
         wait_ms = await _sliding_window(
-            keys=[f"{KEY_PREFIX}{email}"],
+            keys=[counter_key(email)],
             args=[window_ms, constants.LIMIT, uuid.uuid4().hex],
             client=redis_client,
         )

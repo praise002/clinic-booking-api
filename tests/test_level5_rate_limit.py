@@ -192,3 +192,14 @@ async def test_redis_down_fails_open(
     assert statuses == [404] * 7
     assert booked.status_code == 201
     assert any("rate limit skipped" in r.getMessage() for r in caplog.records)
+
+
+async def test_the_counter_key_has_a_fixed_size_whatever_the_email(client: AsyncClient, slots):
+    from src.redis_client import redis_client
+
+    await client.post("/bookings", json=attempt(email="a" * 100_000 + "@example.com"))
+    await client.post("/bookings", json=attempt(email="ada@example.com"))
+
+    keys = [key async for key in redis_client.scan_iter(match="ratelimit:*")]
+    assert len(keys) == 2
+    assert {len(key) for key in keys} == {len("ratelimit:") + 64}

@@ -77,6 +77,9 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description=DESCRIPTION,
         openapi_tags=TAGS,
+        # `/bookings/` is a 404 like any unknown path, not a redirect: a redirect has no
+        # {"error"} body, and behind a TLS proxy it would point at http://.
+        redirect_slashes=False,
         # Swagger keeps the key entered under Authorize across page reloads.
         swagger_ui_parameters={"persistAuthorization": True},
     )
