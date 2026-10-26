@@ -81,3 +81,25 @@ async def get_booking(
     session: AsyncSession = Depends(get_session),
 ):
     return await BookingService(session).get(booking_id)
+
+
+@router.delete(
+    "/bookings/{booking_id}",
+    response_model=BookingResponse,
+    summary="Cancel a booking",
+    description=(
+        "Sets the booking's status to `cancelled` and frees the slot, so it can be booked "
+        "again. The booking itself is kept. Two simultaneous cancels give one 200 and one 409."
+    ),
+    responses={
+        200: {"description": "The cancelled booking, with status `cancelled`."},
+        404: BOOKING_NOT_FOUND_DOC,
+        409: error_doc("The booking is already cancelled.", "booking already cancelled"),
+        500: INTERNAL_ERROR_DOC,
+    },
+)
+async def cancel_booking(
+    booking_id: str = Path(description="The booking id returned when it was created."),
+    session: AsyncSession = Depends(get_session),
+):
+    return await BookingService(session).cancel(booking_id)

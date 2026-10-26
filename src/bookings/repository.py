@@ -1,5 +1,6 @@
 import uuid
 
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,3 +44,24 @@ class BookingRepository:
 
     async def get(self, booking_id: uuid.UUID) -> Booking | None:
         return await self.session.get(Booking, booking_id)
+
+    async def cancel(self, booking_id: uuid.UUID) -> Booking | None:
+        """Flip a confirmed booking to cancelled in one statement. Caller commits.
+
+        Returns None when no confirmed booking has that id (unknown, or already cancelled).
+        One conditional UPDATE, not read-then-write: a second cancel racing this one waits
+        on the row lock, then re-checks `status = 'confirmed'`, finds nothing, and loses.
+        The cancelled row leaves the partial unique index, which frees the slot.
+        """
+        result = await self.session.execute(
+            update(Booking)
+            .where(Booking.id == booking_id, Booking.status == BookingStatus.CONFIRMED)
+            .values(status=BookingStatus.CANCELLED)
+            .returning(Booking),
+            execution_options={"populate_existing": True},
+        )
+        return result.scalar_one_or_none()
+
+    async def exists(self, booking_id: uuid.UUID) -> bool:
+        result = await self.session.execute(select(Booking.id).where(Booking.id == booking_id))
+        return result.first() is not None

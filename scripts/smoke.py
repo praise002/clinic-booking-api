@@ -210,6 +210,25 @@ def main() -> int:
     r = client.post("/bookings", json={**good_booking, "email": "someone.else@example.com"})
     check("booking an already-booked slot is 409", is_error(r, 409, "slot already booked"), r.text)
 
+    r = client.delete(f"/bookings/{booking.get('id')}")
+    check(
+        "DELETE /bookings/{id} is 200 cancelled",
+        r.status_code == 200 and r.json() == {**booking, "status": "cancelled"},
+        r.text,
+    )
+    r = client.delete(f"/bookings/{booking.get('id')}")
+    check("cancelling again is 409", is_error(r, 409, "booking already cancelled"), r.text)
+
+    r = client.delete("/bookings/00000000-0000-4000-8000-000000000000")
+    check("cancelling an unknown booking is 404", is_error(r, 404), r.text)
+
+    r = client.get("/slots")
+    freed = {s["id"]: s["available"] for s in r.json().get("slots", [])}.get("smoke-1")
+    check("the cancelled booking's slot is available again", freed is True, r.text)
+
+    r = client.post("/bookings", json={**good_booking, "email": "rebook@example.com"})
+    check("the freed slot can be booked again", r.status_code == 201, r.text)
+
     # ── Reset wipes bookings (last: it empties the target) ───────────────────
     r = client.post("/reset", json={"slots": slots})
     r = client.get(f"/bookings/{booking.get('id')}")

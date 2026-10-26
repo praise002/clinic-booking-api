@@ -21,3 +21,7 @@ class SlotStarted(BadRequest):
 
 class SlotAlreadyBooked(Conflict):
     message = "slot already booked"
+
+
+class BookingAlreadyCancelled(Conflict):
+    message = "booking already cancelled"

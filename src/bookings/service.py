@@ -4,7 +4,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.bookings.exceptions import BookingNotFound, SlotStarted
+from src.bookings.exceptions import BookingAlreadyCancelled, BookingNotFound, SlotStarted
 from src.bookings.pipes import parse_new_booking
 from src.bookings.repository import BookingRepository
 from src.bookings.schemas import BookingResponse
@@ -34,13 +34,26 @@ class BookingService:
         return BookingResponse.from_model(booking)
 
     async def get(self, booking_id: str) -> BookingResponse:
-        # A non-UUID id can't match any booking, so it is a 404 like any unknown id.
-        try:
-            parsed_id = uuid.UUID(booking_id)
-        except ValueError:
-            raise BookingNotFound() from None
-
-        booking = await self.bookings.get(parsed_id)
+        booking = await self.bookings.get(_parse_booking_id(booking_id))
         if booking is None:
             raise BookingNotFound()
         return BookingResponse.from_model(booking)
+
+    async def cancel(self, booking_id: str) -> BookingResponse:
+        parsed_id = _parse_booking_id(booking_id)
+        booking = await self.bookings.cancel(parsed_id)
+        if booking is None:
+            # Nothing was confirmed under that id: tell "already cancelled" from "unknown".
+            if await self.bookings.exists(parsed_id):
+                raise BookingAlreadyCancelled()
+            raise BookingNotFound()
+        await self.session.commit()
+        return BookingResponse.from_model(booking)
+
+
+def _parse_booking_id(booking_id: str) -> uuid.UUID:
+    # A non-UUID id can't match any booking, so it is a 404 like any unknown id.
+    try:
+        return uuid.UUID(booking_id)
+    except ValueError:
+        raise BookingNotFound() from None

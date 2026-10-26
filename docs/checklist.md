@@ -51,7 +51,7 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   Learner check: Run `BASE_URL=http://localhost:8070 API_KEY=... uv run python scripts/concurrency.py` yourself and read the tally. Then explain back, in your own words, why the 49 losers get 409 instead of a second booking (which row they wait on, and what Postgres does when the first commits). If it isn't clear, we'll look at it together in psql.
   Commit: `Add Level 3: double-booking guarantee with 50-way concurrency proof`
 
-- [ ] **5. Level 3: cancel a booking and the slot frees up**
+- [x] **5. Level 3: cancel a booking and the slot frees up**
   Becomes usable: `DELETE /bookings/{id}` → 200 with the cancelled booking. A second cancel → 409 "booking already cancelled". An unknown or non-UUID id → 404. After a cancel the slot shows `available: true` and can be booked again. Two simultaneous cancels give one 200 and one 409. On the page, Find a Booking gets a Cancel button with "are you sure?", which marks the row cancelled and refreshes the slots.
   Why now: Completes Level 3. It depends on slice 4's index: cancelling drops the row out of the partial index, which is what frees the slot.
   PRD ref: `prd.md > Cancel a Booking`, `prd.md > Find a Booking` (Cancel button), `prd.md > The Core Journey` (step 7)
@@ -130,5 +130,6 @@ Activity mode: [live app and editor, explicit static fallback, focused alternati
 - The dev proxy is a small Vite plugin that calls the same `api/_proxy.js` `forward()` as the Vercel function, instead of Vite's built-in `server.proxy`; the dev server runs on 5180 (5173 is taken locally). Local testing therefore exercises the exact proxy code that deploys, and its key rules are covered by `npm test` (`node --test`, no extra dependencies).
 - `make up_build` now passes `--renew-anon-volumes` — adding `email-validator` in slice 3 showed compose keeps the old anonymous `/app/.venv` volume on rebuild, so new dependencies were invisible in the container.
 - The API docs (`/docs`, `/redoc`, `/openapi.json`) are public alongside `/health`, with the key entered through Swagger's Authorize box — the learner first chose key-protected docs, found a browser can't send the header, and switched. Endpoints and unknown routes still need the key.
+- A cancel anywhere on the page also updates the Book a Slot confirmation to "cancelled" (learner request in slice 5); the app shell passes the last cancelled booking down. A cancel's "already cancelled" notice lives in the owning section, not the button, which disappears with the confirmed status (bug found in the slice 5 browser run).
 - The booking form sets `noValidate`, so every validation message comes from the API (one source of truth) rather than the browser's own email bubble.
 
