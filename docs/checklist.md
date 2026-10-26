@@ -11,13 +11,13 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
 
 ## Slices
 
-- [ ] **1. Level 1 API: reset, list slots, book, look up — running locally on Postgres**
+- [x] **1. Level 1 API: reset, list slots, book, look up — running locally on Postgres**
   Becomes usable: `docker compose up` starts api + Postgres. With curl you can `POST /reset` some slots, `GET /slots` (earliest first, `?provider=` exact match, `available` flag), `POST /bookings` → 201 confirmed, `GET /bookings/{id}` → the booking or 404. Every error is `{"error": ...}`. Data survives `docker compose restart api`.
   Why now: Bootstraps everything every later slice lands on: uv project, compose, Alembic, the domain layout, the global error shape, the test harness against real Postgres, `scripts/smoke.py`. The full `0001_initial` schema (including the partial unique index) goes in now because the spec defines it as one migration; its 409 behavior is proven in slice 4.
   PRD ref: `prd.md > API Contract`, `prd.md > Slots`, `prd.md > Admin Reset`
   Spec ref: `spec.md > Stack`, `spec.md > Where It Runs and How Someone Tries It` (Local), `spec.md > Components` (API: Error handling, API: Slots, API: Bookings steps 2/6/7/8 without validation, API: Booking lookup `GET /bookings/{id}`, API: Health), `spec.md > Data Model`, `spec.md > File Structure`
   Build: Scaffold per File Structure, mirroring `supportiq-ai-backend` (pyproject/uv, Dockerfile.dev, compose.yaml with postgres:17-alpine, Makefile, runner.sh, `.env.example`). Add config, async database session, Alembic async + `0001_initial`, `core/errors.py` + `core/timefmt.py`, the slots domain (`/reset`, `/slots`) and the bookings domain (`POST /bookings`, `GET /bookings/{id}`), `/health`. Then `tests/conftest.py` (test DB, truncate between tests), `tests/test_level1_slots_bookings.py`, and `scripts/smoke.py` with the Level 1 checks.
-  Verify (mechanical): `make tests` passes. `docker compose up --build` starts clean on a fresh volume and migrations apply. `scripts/smoke.py` against `http://localhost:8000` prints all OK. curl a booking, `docker compose restart api`, and `GET /bookings/{id}` still returns it. `ruff check` is clean.
+  Verify (mechanical): `make tests` passes. `docker compose up --build` starts clean on a fresh volume and migrations apply. `scripts/smoke.py` against `http://localhost:8070` prints all OK. curl a booking, `docker compose restart api`, and `GET /bookings/{id}` still returns it. `ruff check` is clean.
   Learner check: Run `docker compose up --build`. Reset with the `task-1.md` example slot, book `s1` with curl, copy the `id` from the 201, then fetch `/bookings/<id>`: you should see the same booking with `status: "confirmed"` and `created_at` ending in `Z`. `GET /slots` should now show `s1` with `available: false`.
   Commit: `Add Level 1 API: reset, slots, book, get booking`
 
@@ -38,7 +38,7 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   Spec ref: `spec.md > Components` (API: Auth middleware, API: Error handling, API: Bookings steps 1, 2, 5, 6; Web: Book a Slot error mapping, Web: Admin Reset), `spec.md > Important Failure Modes` (422 / non-error body leaks)
   Build: `core/auth.py` constant-time middleware (exempts `/health`, runs before routing), the 422→400 override plus 404/405/bad-JSON handlers, `bookings/pipes.py` validation and normalisation, slot-exists and slot-started checks, `tests/test_level2_auth_validation.py` asserting status **and** body shape for every error, smoke lines for Level 2. Frontend: `messages.js` mappings, BookingForm error display, slot refresh on 404/started.
   Verify (mechanical): `make tests` passes, including every Level 1 test, now sent with the key. Smoke passes locally, including no-key → 401 and bad-email → 400. A curl through the dev proxy (`localhost:5173/api/bookings`) with a bad email returns the 400 body.
-  Learner check: On the page, try booking with an empty name, then `not-an-email`, then a slot in the past (reset one in from Admin). Each should give a clear message with your inputs still in the form. In Admin, try a wrong key and see "Wrong API key". Then `curl localhost:8000/slots` with no key and see a 401.
+  Learner check: On the page, try booking with an empty name, then `not-an-email`, then a slot in the past (reset one in from Admin). Each should give a clear message with your inputs still in the form. In Admin, try a wrong key and see "Wrong API key". Then `curl localhost:8070/slots` with no key and see a 401.
   Commit: `Add Level 2: API key auth and booking validation` (API repo), `Show booking error messages` (frontend repo); then `verify level-2`
 
 - [ ] **4. Level 3: two people can never book the same slot — proven with 50 at once**
@@ -47,8 +47,8 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   PRD ref: `prd.md > API Contract` (Concurrency), `prd.md > Booking Errors` (409)
   Spec ref: `spec.md > How This Works, In Plain Language`, `spec.md > Components` (API: Bookings step 7, API: Concurrency guarantee), `spec.md > Data Model` (`uq_bookings_slot_confirmed`), `spec.md > Important Failure Modes` (connection pool exhaustion)
   Build: Run the insert inside a SAVEPOINT in `bookings/repository.py`, mapping a unique violation on `uq_bookings_slot_confirmed` → `SlotAlreadyBooked` → 409. Set SQLAlchemy `pool_size`/`max_overflow` for the 50-way race. Add `tests/test_level3_concurrency_cancel.py` (the 50-way `asyncio.gather` proof: 1×201, 49×409, 0×5xx, 1 confirmed row), `scripts/concurrency.py` for any `BASE_URL`, and the 409 smoke line. Frontend: 409 message + slot refresh.
-  Verify (mechanical): The concurrency test passes, run several times in a row so the pass isn't luck. `scripts/concurrency.py` against `http://localhost:8000` (gunicorn, `WEB_CONCURRENCY=2`) prints 1×201 / 49×409 and a single confirmed booking. Smoke passes.
-  Learner check: Run `BASE_URL=http://localhost:8000 API_KEY=... uv run python scripts/concurrency.py` yourself and read the tally. Then explain back, in your own words, why the 49 losers get 409 instead of a second booking (which row they wait on, and what Postgres does when the first commits). If it isn't clear, we'll look at it together in psql.
+  Verify (mechanical): The concurrency test passes, run several times in a row so the pass isn't luck. `scripts/concurrency.py` against `http://localhost:8070` (gunicorn, `WEB_CONCURRENCY=2`) prints 1×201 / 49×409 and a single confirmed booking. Smoke passes.
+  Learner check: Run `BASE_URL=http://localhost:8070 API_KEY=... uv run python scripts/concurrency.py` yourself and read the tally. Then explain back, in your own words, why the 49 losers get 409 instead of a second booking (which row they wait on, and what Postgres does when the first commits). If it isn't clear, we'll look at it together in psql.
   Commit: `Add Level 3: double-booking guarantee with 50-way concurrency proof`
 
 - [ ] **5. Level 3: cancel a booking and the slot frees up**
@@ -68,7 +68,7 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   Spec ref: `spec.md > Components` (API: Idempotency, API: Bookings step 3), `spec.md > Data Model` (`idempotency_keys`), `spec.md > What Was Simplified and Why` (page doesn't send the key)
   Build: The `idempotency/` domain (claim with `INSERT … ON CONFLICT DO NOTHING RETURNING`, replay or 422, store the final 201/400/404/409 in the same transaction as the booking), the canonical body hash in `pipes.py`, and its wiring into the booking service. Add `/reset` wiping `idempotency_keys`, `tests/test_level4_idempotency_paging.py` (replay of 201 and of 409/400, 422 mismatch, 10 concurrent same-key requests → one booking, same id, checked by a direct DB count), smoke lines. API only, per the spec.
   Verify (mechanical): `make tests` passes. Smoke: two identical keyed POSTs return the same id, and a changed body with the same key → 422.
-  Learner check: With curl against `localhost:8000`, send the same keyed booking twice and compare the two `id`s. Then change the name with the same key and see the 422.
+  Learner check: With curl against `localhost:8070`, send the same keyed booking twice and compare the two `id`s. Then change the name with the same key and see the 422.
   Commit: `Add Level 4: idempotent booking retries`
 
 - [ ] **7. Level 4: page through a person's bookings, on the API and the page**
@@ -123,4 +123,8 @@ Reflection: [offered/answered/declined/already covered — personal answer belon
 Activity mode: [live app and editor, explicit static fallback, focused alternative, prior practice, or recap]
 
 ## Revisions
+
+- Local ports are 8070 (api) and 5452 (Postgres), not 8000/5432; checklist and spec updated — other local containers on this machine already hold 8000, 8010, 5432 and 5442.
+- The whole global error shape (validation → 400, unknown route 404, wrong method 405, bad JSON 400, 500 → `{"error"}`) and the unknown-slot 404 moved into slice 1 — Level 1 already needs `{"error"}` bodies and a 404 for a missing slot (otherwise the foreign key turns it into a 500). Slice 3 still adds the auth, field validation, started-slot check and the per-error tests.
+- Every endpoint now carries full OpenAPI docs (summary, description, every response status with an example; FastAPI's auto 422 removed), guarded by `tests/test_openapi_docs.py` — the learner asked for it after slice 1. Each later slice documents the statuses and endpoints it adds (401, 409, 422, 429 + `Retry-After`).
 

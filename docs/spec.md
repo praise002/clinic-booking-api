@@ -87,17 +87,17 @@ All choices below were agreed in the `4-spec` conversation. Library versions are
 
 ```bash
 cp .env.example .env            # set API_KEY
-docker compose up --build       # api on http://localhost:8000, db, redis
+docker compose up --build       # api on http://localhost:8070, db, redis
 docker compose exec api alembic upgrade head   # runner.sh also runs this on start
 make tests                      # pytest against the compose db/redis (test database)
 ```
 
-- **Smoke test:** `BASE_URL=http://localhost:8000 API_KEY=... uv run python scripts/smoke.py`
+- **Smoke test:** `BASE_URL=http://localhost:8070 API_KEY=... uv run python scripts/smoke.py`
 - **Concurrency against any URL:** `BASE_URL=... API_KEY=... uv run python scripts/concurrency.py` (fires 50 simultaneous bookings at one slot and asserts 1×201 + 49×409).
 
 **Frontend:**
 - Run `npm install && npm run dev`, then open http://localhost:5173.
-- In dev, `vite.config.js` proxies `/api/*` to `http://localhost:8000` and adds the key from `.env.local` (`API_KEY`, no `VITE_` prefix, so it never enters the bundle). Production behaves the same way, through the Vercel function.
+- In dev, `vite.config.js` proxies `/api/*` to `http://localhost:8070` and adds the key from `.env.local` (`API_KEY`, no `VITE_` prefix, so it never enters the bundle). Production behaves the same way, through the Vercel function.
 
 ### Deployed (required, `CLAUDE.md`)
 
@@ -400,7 +400,7 @@ koya-assessment/
     │       ├── CancelButton.jsx
     │       └── AdminReset.jsx
     ├── index.html
-    ├── vite.config.js                  # dev proxy /api → localhost:8000 with API_KEY from .env.local
+    ├── vite.config.js                  # dev proxy /api → localhost:8070 with API_KEY from .env.local
     ├── .env.example                    # API_BASE_URL, API_KEY (server-side only)
     ├── package.json
     └── README.md

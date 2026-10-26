@@ -1,0 +1,16 @@
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+**/.venv
+.git
+.vscode
+.claude
+**/.env
+**/.env.*
+docs/
+*.md
+Dockerfile
+Dockerfile.dev
+compose.yaml
+.railway/
