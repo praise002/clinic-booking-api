@@ -1,63 +1,71 @@
 # Verification Report
 
-**Scope:** level-3 (Koya Levels 1–3: reset, slots, book, look up; API key and booking validation; no double booking under simultaneous requests; cancel; plus the web page for all three)
-**Target:** local — API http://localhost:8070 (Docker Compose, 2 gunicorn workers, Postgres), page http://localhost:5180 (Vite dev server + `api/_proxy.js`). No deployed URL yet (deployment is slice 9).
+**Scope:** level-4 (Koya Levels 1–4: reset, slots, book, look up; API key and validation; no double booking, cancel; idempotent retries; a person's bookings with cursor paging; plus the web page for all of it)
+**Target:** local — API http://localhost:8070 (Docker Compose, 2 gunicorn workers, Postgres), page http://localhost:5180 (Vite dev server + `api/_proxy.js`). No deployed URL yet (slice 9).
 **Date:** 2026-10-26
 **Blockers:** 0
-**Major:** 1
+**Major:** 3
 **Minor:** 0
 **Verdict:** PASS
-**Not verified:** deployed URL (doesn't exist yet, slice 9; `scripts/concurrency.py` and `scripts/smoke.py` must be re-run against it there).
+**Not verified:** deployed URL (slice 9).
 
 ## Findings
 
 | # | Severity | Level | Location | Finding | Why it matters | Remediation |
 |---|---|---|---|---|---|---|
-| 1 | major (carried from level-2, accepted) | 2 | `src/core/auth.py` `PUBLIC_PATHS`; `spec.md > Decisions and Open Issues` | `GET /health`, `/docs`, `/redoc` and `/openapi.json` answer without a key, while `task-1.md` says every request needs one. Both are recorded learner decisions; counted as major only because the skill treats any spec/contract disagreement as major. | A checker probing exactly those paths without a key would get 200 instead of 401. Every contract endpoint and unknown route is 401 without the key. | None unless the decision changes. |
-
-No new findings at Level 3.
+| 1 | major | 4 | `idempotency_keys.response` is `JSONB` (migration 0001, `src/idempotency/models.py`) | A replayed response has the same status and the same values as the first, but **its keys come back in a different order**: first `{"id","slot_id","name","email","status","created_at"}`, replay `{"id","name","email","status","slot_id","created_at"}` (probes P, P2). `JSONB` stores objects in its own key order. | The contract says "the same response". A checker that parses JSON sees identical bodies; one that compares the raw text of the two responses would see them differ. | Store the response as `JSON` (keeps the text exactly as written) instead of `JSONB`: migration `0002` (`ALTER COLUMN response TYPE json`), model to `JSON`, and a test asserting the replay's raw bytes equal the first response's. Update `spec.md > Data Model`. |
+| 2 | major | 4 | `scripts/concurrency.py`, `scripts/smoke.py` | No live script sends **simultaneous** retries with one `Idempotency-Key`. It's covered by `test_simultaneous_retries_with_one_key_create_one_booking` and probe R, but nothing will prove it against the deployed URL in slice 9. Counted major per the skill's rule for level-3+ behaviours. | The deployed API (2 workers, Railway Postgres) would have its idempotency race proven only by the local test, not live. | Add a same-key race to `scripts/concurrency.py` (e.g. 20 simultaneous requests with one key → all the same status and id, and one booking in `GET /bookings?email=`). |
+| 3 | major (carried, accepted) | 2 | `src/core/auth.py` `PUBLIC_PATHS` | `/health` and the docs answer without a key; `task-1.md` says every request needs one. Recorded learner decision. | A checker probing those exact paths without a key gets 200, not 401. | None unless the decision changes. |
 
 **Notes (not findings):**
-- The contract's example body for `DELETE /bookings/{id}` 200 shows `"status": "confirmed"`, but its description says "Sets status to cancelled". The API follows the description and returns `"status": "cancelled"`. It's clearly a copy of the booking example, so this is the right reading.
-- A slot that is both booked and started gets `400 slot has already started` (probe M): the started check runs before the insert. The contract doesn't order the two.
-- In probe L, a cancel raced against 20 rebookings: one rebooking won after the cancel committed, and the rest got 409. Zero winners would also have been correct, if every rebooking had reached the index before the cancel committed. The invariant (at most one confirmed booking) held.
+- **Replay after a cancel** (probe S): a retry with the key of a booking that has since been cancelled gets the original `201` body with `"status": "confirmed"`, while `GET /bookings/{id}` says `cancelled`. That is what "the same key returns the same response" means. The replay is the record of what the first request got, not a fresh read.
+- `limit=05` is accepted as 5. It's digits from 1 to 50; the contract only rules out values outside 1–50 and non-integers.
+- A cursor is a position, not tied to an email; a well-formed cursor past every booking returns an empty last page (`next_cursor: null`) rather than a 400 (probe V). Only cursors the API couldn't have made are 400.
 
 ## Requirement map
 
 | # | Level | Requirement (from task-1.md) | Test that proves it | Live check | Status |
 |---|---|---|---|---|---|
-| 1–9 | 1 | reset (200, wipes bookings, keeps past slots), slots (earliest first, `available`, provider exact), book 201, get 200/404, `{"error"}` shape, persistence | `test_level1_slots_bookings.py` (13 tests), reverified by the suite | smoke lines 1–12; restart probe O | verified |
-| 10–22 | 2 | key 401 (missing/wrong/before validation), 400s (missing/empty/non-string/invalid email/bad body), 404 unknown slot, 400 started, trim + lower-case, rejected booking creates nothing | `test_level2_auth_validation.py` (60 cases), reverified by the suite | smoke lines 13–26; probe N (DELETE without key 401) | verified |
-| 23 | 3 | A slot that already has a confirmed booking → 409 | `test_booking_a_booked_slot_is_409` (asserts `{"error": "slot already booked"}` and 1 confirmed row) | smoke "booking an already-booked slot is 409" | verified |
-| 24 | 3 | **409 holds when many requests arrive at the same moment** | `test_fifty_simultaneous_bookings_give_one_201_and_49_409s` (asyncio.gather, 1×201 / 49×409, 409 bodies, 1 confirmed row in Postgres) | `scripts/concurrency.py` PASS; probe H (30 separate curl processes → 1×201, 29×409, 1 row); probe I (two slots at once → one winner each) | verified |
-| 25 | 3 | `DELETE /bookings/{id}` → 200 with the booking, status `cancelled` | `test_cancelling_returns_200_with_the_cancelled_booking` (body equals the booking with status cancelled; GET agrees) | smoke; probe K | verified |
-| 26 | 3 | Cancel frees the slot | `test_a_cancelled_slot_can_be_booked_again` (available true, rebook 201, old stays cancelled, 1 confirmed row) | smoke "available again" + "booked again"; probe O after restart | verified |
-| 27 | 3 | Unknown booking → 404 `{"error"}` | `test_cancelling_an_unknown_booking_is_404[uuid, not-a-uuid]` | smoke | verified |
-| 28 | 3 | Already cancelled → 409 `{"error"}` | `test_cancelling_twice_is_409` | smoke; probe J | verified |
-| 29 | 3 (spec) | Two simultaneous cancels → one 200, one 409 | `test_two_simultaneous_cancels_give_one_200_and_one_409` | probe J (10 parallel → 1×200, 9×409) | verified |
-| 30 | 3 (spec) | After a cancel, simultaneous rebookings still give one winner | `test_after_a_cancel_fifty_simultaneous_rebookings_still_give_one_winner` | probe L | verified |
-| 31 | 3 (PRD) | Page: 409 message + slot refresh; cancel with "are you sure?" (no → nothing changes); row and confirmation show cancelled; slot freed; "already cancelled" message | — | headless Chromium runs (below) | verified |
+| 1–9 | 1 | reset, slots, book, get, error shape, persistence | `test_level1_slots_bookings.py` (13) | smoke 1–12 | verified |
+| 10–22 | 2 | 401s, validation 400s, 404 slot, 400 started, trim/lower | `test_level2_auth_validation.py` (61) | smoke 13–26; probe W (no key → 401) | verified |
+| 23–30 | 3 | 409 booked, 409 under concurrency, cancel 200/404/409, slot freed | `test_level3_concurrency_cancel.py` (9) | smoke 27–32; `scripts/concurrency.py` PASS | verified |
+| 31 | 4 | Same key + same body → same status code | `test_a_retry_with_the_same_key_and_body_replays_the_same_booking`, `test_a_failed_attempt_is_replayed_too[400/400/404]`, `test_a_409_is_replayed_even_after_the_slot_frees_up` | smoke; probe P | verified |
+| 32 | 4 | … same booking id | same tests (`retry.json() == first.json()`) | smoke; probes P, R (1 distinct id) | verified (body bytes differ in key order: finding 1) |
+| 33 | 4 | … never creates a second booking | `booking_rows() == 1` in the replay tests; `test_simultaneous_retries_with_one_key_create_one_booking` (10 at once) | probe P/R: 1 booking in `GET /bookings?email=`; 20 parallel curl → 20×201, 1 id | verified (no live script for slice 9: finding 2) |
+| 34 | 4 | Same key + different body → 422 | `test_the_same_key_with_a_different_body_is_422` (asserts `{"error": ...}` and that no booking was made) | smoke; probe Q | verified |
+| 35 | 4 (spec) | Same JSON written differently is the same body | `test_the_same_json_written_differently_is_the_same_body` | — | verified |
+| 36 | 4 (spec) | 401 / malformed body don't use up the key; reset forgets keys; key > 255 → 400; blank key = no key | `test_a_rejected_api_key_does_not_use_up_the_idempotency_key`, `test_a_malformed_body_does_not_use_up_the_key`, `test_reset_forgets_idempotency_keys`, `test_a_key_longer_than_255_characters_is_400`, `test_an_empty_key_counts_as_no_key` | — | verified |
+| 37 | 4 | `GET /bookings`: that person's bookings, oldest first | `test_pages_walk_every_booking_once_oldest_first` (25 interleaved with another email's) | smoke; probe T | verified |
+| 38 | 4 | Email match ignores case | `test_the_email_match_ignores_case_and_spaces` | smoke (`  PAGER@example.COM `); probe T (`WALK@` vs `Walk@`) | verified |
+| 39 | 4 | Cursor paging: `next_cursor` back as `cursor`; last page `null` | walk tests; `test_an_exact_multiple_ends_without_an_empty_page`; `test_bookings_made_at_the_same_instant_still_page_without_gaps` | smoke; probe T (3/3/2, last null) | verified |
+| 40 | 4 | No duplicates, no gaps | walk tests compare the full id list to creation order | smoke; probe T | verified |
+| 41 | 4 | `limit` 1–50, default 10; anything else 400 | `test_limit_accepts_1_to_50`, `test_any_other_limit_is_400[0/51/-1/abc/1.5/""]`, `test_the_default_page_size_is_10` | smoke (0/51/abc); probe U (11 values incl. ` 5`, fullwidth `１０`) | verified |
+| 42 | 4 (spec) | Missing email / bad cursor → 400 | `test_the_email_is_required[*]`, `test_a_bad_cursor_is_400[*]` | smoke; probes V, W | verified |
+| 43 | 4 (PRD) | Page: My Bookings, 10 per page, Next page until the end, cancelled greyed, cancel from the list, "No bookings for this email" | `npm test` (proxy) | headless Chromium (below) | verified |
 
-**Test reality check:** each Level 3 test asserts the status code **and** the body (`{"error": "<exact message>"}` or the full booking), and the race tests also count rows directly in Postgres. In slice 4, the 50-way test failed with the index dropped (`Counter({201: 50})`), so it can detect double booking. The three race tests passed 10/10 consecutive runs in slices 4–5.
+**Test reality check:** every Level 4 test asserts the status and the body (`{"error": "<exact message>"}`, or full equality between first and replayed bodies), and the replay and race tests also count rows in Postgres. Schema: `alembic check` reports no drift between the models and migration 0001.
 
-## Security pass (OWASP, Levels 1–3)
+## Security pass (OWASP, Levels 1–4)
 
-- **A01:** `DELETE` without a key is 401 (probe N); every endpoint is covered by the middleware.
-- **A02:** 0 hits for the API key in either repo's history; only `.env.example` tracked. The 3 database-URL matches are documentation mentioning the `postgresql://` scheme, with no credentials.
-- **A03:** no string-built SQL. The cancel is a parameterized SQLAlchemy `update()`.
-- **A04 (insecure design, the core of this level):** no check-then-insert anywhere. Double booking is prevented by the partial unique index `uq_bookings_slot_confirmed`, and double cancel by a single conditional `UPDATE … WHERE status = 'confirmed'`. Both are enforced by Postgres, under 2 worker processes.
+- **A01:** `GET /bookings` without a key is 401 (probe W). Note the design: anyone with the API key can list any email's bookings. That's the contract (one shared key, identified by email); the browser never holds the key, and the proxy is the only patient path.
+- **A02:** API key 0 hits in either repo's history; only `.env.example` tracked.
+- **A03:** the cursor is untrusted input: decoded, parsed into a datetime and a UUID, then used only as bound parameters in a SQLAlchemy `tuple_()` comparison. Garbage is 400, never a 500 (probe V). No string-built SQL.
+- **A04:** the idempotency record is written in the same transaction as the booking; concurrent same-key requests serialise on the key's primary key (probe R: 20 → 1 booking). Keys are global (one API key exists) and kept until `/reset`.
 - **A06:** `pip-audit` and `npm audit` clean.
-- **A09:** 401s logged without key, query or body (fixed after level-2).
+- **A09:** 0 email addresses in the API logs; the 401 log line omits the query string.
+- **DoS:** `limit` is capped at 50; keys at 255 characters.
 
 ## Commands run
 
 ```
 $ make tests
-collected 88 items
-============================== 88 passed in 5.56s ==============================
+collected 125 items
+============================= 125 passed in 10.26s =============================
 $ uv run ruff check && uv run ruff format --check
 All checks passed!
-36 files already formatted
+45 files already formatted
+$ uv run alembic check
+No new upgrade operations detected.
 $ make smoke
 BASE_URL=${BASE_URL:-http://localhost:8070} uv run python scripts/smoke.py
 Smoke test against http://localhost:8070
@@ -94,15 +102,23 @@ OK    cancelling again is 409
 OK    cancelling an unknown booking is 404
 OK    the cancelled booking's slot is available again
 OK    the freed slot can be booked again
+OK    same Idempotency-Key + body: same status and booking id
+OK    same Idempotency-Key, different body: 422
 OK    POST /reset deletes every booking
+OK    GET /bookings pages: oldest first, each once, ends with next_cursor null
+OK    GET /bookings limit=0: 400
+OK    GET /bookings limit=51: 400
+OK    GET /bookings limit=abc: 400
+OK    GET /bookings without email: 400
+OK    GET /bookings with a bad cursor: 400
 
 All checks passed
 $ BASE_URL=http://localhost:8070 uv run python scripts/concurrency.py
 50 simultaneous bookings for one slot against http://localhost:8070
-  finished in 0.74s
+  finished in 0.63s
   201: 1
   409: 49
-  winner: 0ab1f391-7a43-47ca-ac5b-4e7f16274ce3 (Racer 0), status confirmed
+  winner: c615df25-fa90-4d9a-8cfd-224773ee862b (Racer 0), status confirmed
   slot 'race' available: False
 PASS: exactly one booking won
 $ (frontend) npm test
@@ -110,70 +126,84 @@ $ (frontend) npm test
 ℹ fail 0
 ```
 
-Independent HTTP probes (separate `curl` processes via `xargs -P`, local API):
+HTTP probes (`curl`, local API):
 
 ```
-### H. 30 separate curl processes in parallel, same slot
-      1 201
-     29 409
-confirmed rows for a: 1
-### I. two slots raced at once (20 each, interleaved)
-      1 a 201
-     19 a 409
-      1 b 201
-     19 b 409
-### J. 10 parallel cancels of one booking
-      1 200 "status":"cancelled"
-      9 409 already cancelled
-### K. DELETE response body vs GET after
-HTTP/1.1 200 OK
-{"id":"7d4bad05-7bf4-4f1a-89f4-2fe71918ff7c","slot_id":"a","name":"Ada","email":"ada@example.com","status":"cancelled","created_at":"2026-10-26T02:38:30.122Z"}
-### L. cancel and 20 rebooks fired together (booking already exists)
-      1 book 201
-     19 book 409
-      1 cancel 200
-cancelled: 1
-confirmed: 1
-### M. booked AND started slot (which error wins?)
-{"error":"slot has already started"} [400]
-### N. DELETE without key / wrong method on /bookings/{id}
-{"error":"invalid or missing API key"} [401]
-{"error":"method not allowed"} [405]
-### O. cancelled status persists across restart
-{'past': False, 'a': True, 'b': True}
+### P. same key + same body twice (curl -i), then the list
+HTTP/1.1 201 Created
+{"id":"77ed36b5-3ca0-4462-9a2c-db758bd9869c","slot_id":"v0","name":"Ada","email":"idem@example.com","status":"confirmed","created_at":"2026-10-26T03:02:19.860Z"}
+HTTP/1.1 201 Created
+{"id":"77ed36b5-3ca0-4462-9a2c-db758bd9869c","name":"Ada","email":"idem@example.com","status":"confirmed","slot_id":"v0","created_at":"2026-10-26T03:02:19.860Z"}
+1 booking(s) in the list
+### Q. same key, different body
+HTTP/1.1 422 Unprocessable Entity
+{"error":"Idempotency-Key reused with a different body"}
+1 booking(s) in the list
+### R. 20 parallel curl, same new key + body
+   status       1 201201201201201201201201201201201201201201201201201201201201
+   distinct ids: 1
+1 booking(s) in the list
+### S. replay after the booking was cancelled
+{"id":"4d137518-1744-46ce-b84f-bbaf03b095ba","name":"Cy","email":"cy@example.com","status":"confirmed","slot_id":"v3","created_at":"2026-10-26T03:02:21.097Z"} [201]
+{"id":"4d137518-1744-46ce-b84f-bbaf03b095ba","slot_id":"v3","name":"Cy","email":"cy@example.com","status":"cancelled","created_at":"2026-10-26T03:02:21.097Z"} [200] <- GET now
+### T. walk 8 bookings for one email with limit=3 by next_cursor
+   page 1: ['v4', 'v5', 'v6'] next_cursor: MjAyNi0xMC0yNlQw…
+   page 2: ['v7', 'v8', 'v9'] next_cursor: MjAyNi0xMC0yNlQw…
+   page 3: ['v10', 'v11'] next_cursor: null
+### U. limit values
+   limit=0                      {"error":"limit must be an integer from 1 to 50"} [400]
+   limit=51                     {"error":"limit must be an integer from 1 to 50"} [400]
+   limit=abc                    {"error":"limit must be an integer from 1 to 50"} [400]
+   limit=-1                     {"error":"limit must be an integer from 1 to 50"} [400]
+   limit=1.5                    {"error":"limit must be an integer from 1 to 50"} [400]
+   limit=                       {"error":"limit must be an integer from 1 to 50"} [400]
+   limit=%205                   {"error":"limit must be an integer from 1 to 50"} [400]
+   limit=05                     [200] ok
+   limit=1                      [200] ok
+   limit=50                     [200] ok
+   limit=%EF%BC%91%EF%BC%90     {"error":"limit must be an integer from 1 to 50"} [400]
+### V. cursor values
+   MjAyNi0xMC0yNlQwMzowMj   -> 3 bookings, next_cursor=set [200]
+   MjAyNi0xMC0yNlQwMzowMj   -> cursor is not valid [400]
+   MjAyNi0xMC               -> cursor is not valid [400]
+   %00                      -> cursor is not valid [400]
+   MjA5OS0wMS0wMVQwMDowMD   -> 0 bookings, next_cursor=null [200]
+   (last one: a well-formed cursor for 2099, after every booking)
+### W. email param variants
+{"error":"email is required"} [400]
+{"error":"email is required"} [400]
+{"bookings":[],"next_cursor":null} [200]
+{"error":"email is required"} [400] (no email param)
+{"error":"invalid or missing API key"} [401] (no key)
+### P2. key order: first response vs replay, raw bytes
+   keys: ['id', 'slot_id', 'name', 'email', 'status', 'created_at']
+   keys: ['id', 'name', 'email', 'status', 'slot_id', 'created_at']
+   stored jsonb: {"id": "289c3ad7-1167-4ad1-8a23-0e52805b0c61", "name": "Ada", "email": "o@example.com", "status": "confirmed", "slot_id": "o1", "created_at": "2026-10-26T03:02:44.271Z"}
 ```
 
-(O: `a` is available again after its booking was cancelled and the API restarted; `past` is unavailable because probe M inserted a confirmed booking for it directly in Postgres.)
+(R prints the 20 status codes run together because the parallel `curl` writes had no newlines between them: 20 × `201`, with 1 distinct booking id. V's second and third rows are the good cursor with an extra character, and cut short.)
 
 Web page (headless Chromium via http://localhost:5180), security:
 
 ```
-### web page: 409 (someone books first)
-someone else booked it first: 201
-page still shows it as: Selected
-page message: Someone just booked this slot. Please pick another.
-row after refresh: Unavailable
-### web page: cancel journey
-booked 4210b99f-9d40-4f99-8c41-0394e8b37543 | slot row: Unavailable
-1. press Cancel booking, answer no:
-  dialog: "Are you sure you want to cancel this booking?" -> Cancel
-   status: confirmed | slot row: Unavailable
-2. press Cancel booking, answer yes:
-  dialog: "Are you sure you want to cancel this booking?" -> OK
-   status: cancelled | cancel button still there: false | slot row: Choose
-   Book a Slot confirmation now says: This booking has been cancelled. The slot is free again. | status: cancelled
-3. rebook the freed slot:
-   booked again: 4cd288a1-4818-453b-b7cb-f0945dfacb06 | slot row: Unavailable
-4. cancelled in another tab, then cancel here:
-   other tab DELETE: 200
-  dialog: "Are you sure you want to cancel this booking?" -> OK
-   message: This booking is already cancelled. | status shown: cancelled
+### web page: My Bookings (headless Chromium)
+page 1: 10 rows | caption: Page 1 · oldest first · ada@example.com | Next page button: 1
+  first row: Fri 1 Mar 2030, 09:00–09:30 · Dr Ade | 9d19935b-96ee-4230-9065-15a0a3154dd0 | Copy | confirmed | Cancel
+page 2: 2 rows | Next page button: 0
+all 12 once, oldest first: true | Bo's booking shown: false
+cancel last row on page 2 -> status: cancelled | greyed: true
+  slot list now shows m11 as: Choose
+cancelled via Find a Booking -> My Bookings row says: cancelled
+phone width horizontal scroll: false
+nobody@example.com -> No bookings for this email.
+blank email -> Please enter your email.
 ### secrets
 .: key hits=0; tracked env: .env.example 
 ../clinic-booking-frontend: key hits=0; tracked env: .env.example 
-db URLs with real passwords committed: 3   (all three are docs mentioning the postgresql:// scheme; no credentials)
-### raw SQL with string building
+### string-built SQL
 none
+### personal data in logs (emails)
+0
 ### pip-audit
 No known vulnerabilities found
 ### npm audit
