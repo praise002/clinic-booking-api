@@ -71,7 +71,7 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   Learner check: With curl against `localhost:8070`, send the same keyed booking twice and compare the two `id`s. Then change the name with the same key and see the 422.
   Commit: `Add Level 4: idempotent booking retries`
 
-- [ ] **7. Level 4: page through a person's bookings, on the API and the page**
+- [x] **7. Level 4: page through a person's bookings, on the API and the page**
   Becomes usable: `GET /bookings?email=&limit=&cursor=` returns that person's bookings oldest first, case-insensitive, cancelled included, with `next_cursor` (`null` on the last page). It returns 400 for a missing email, a bad limit (not 1–50) or a bad cursor. On the page, the **My Bookings** section lists them 10 at a time with provider/time, id, status (cancelled greyed), **Next page**, and Cancel on confirmed rows. The core journey is now complete end to end.
   Why now: Completes Level 4, and with it the PRD's full core journey (book → find again → cancel → slot free).
   PRD ref: `prd.md > My Bookings`, `prd.md > Cancel a Booking`, `prd.md > The Core Journey` (steps 6–7)
@@ -131,5 +131,7 @@ Activity mode: [live app and editor, explicit static fallback, focused alternati
 - `make up_build` now passes `--renew-anon-volumes` — adding `email-validator` in slice 3 showed compose keeps the old anonymous `/app/.venv` volume on rebuild, so new dependencies were invisible in the container.
 - The API docs (`/docs`, `/redoc`, `/openapi.json`) are public alongside `/health`, with the key entered through Swagger's Authorize box — the learner first chose key-protected docs, found a browser can't send the header, and switched. Endpoints and unknown routes still need the key.
 - A cancel anywhere on the page also updates the Book a Slot confirmation to "cancelled" (learner request in slice 5); the app shell passes the last cancelled booking down. A cancel's "already cancelled" notice lives in the owning section, not the button, which disappears with the confirmed status (bug found in the slice 5 browser run).
+- My Bookings uses compact one-line rows (time · provider, id + Copy, status, Cancel) instead of the full booking card — learner choice in slice 7, after seeing 10 cards make a ~3000px page; matches the PRD's "rows".
+- `GET /bookings` takes `email`, `limit` and `cursor` as plain strings checked in `bookings/pipes.py`, so every bad value is a 400 with the contract message rather than FastAPI's wording; the docs still describe `limit` as an integer 1–50.
 - The booking form sets `noValidate`, so every validation message comes from the API (one source of truth) rather than the browser's own email bubble.
 

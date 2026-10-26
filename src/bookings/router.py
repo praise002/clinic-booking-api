@@ -1,11 +1,12 @@
 import json
 
-from fastapi import APIRouter, Depends, Header, Path, Request, status
+from fastapi import APIRouter, Depends, Header, Path, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bookings.constants import DEFAULT_LIMIT, MAX_LIMIT
 from src.bookings.exceptions import InvalidBookingBody
-from src.bookings.schemas import BookingRequest, BookingResponse
+from src.bookings.schemas import BookingListResponse, BookingRequest, BookingResponse
 from src.bookings.service import BookingService
 from src.core.exceptions import BadRequest
 from src.core.schemas import INTERNAL_ERROR_DOC, error_doc
@@ -89,6 +90,55 @@ async def create_booking(
         raise InvalidBookingBody()
     outcome = await BookingService(session).create(body, key)
     return JSONResponse(status_code=outcome.status_code, content=outcome.body)
+
+
+@router.get(
+    "/bookings",
+    response_model=BookingListResponse,
+    summary="List a person's bookings",
+    description=(
+        "That person's bookings, oldest first, cancelled ones included. The email match "
+        "ignores case and surrounding spaces. Cursor paging: pass `next_cursor` back as "
+        "`cursor` to get the next page; the last page has `next_cursor: null`."
+    ),
+    responses={
+        200: {"description": "A page of bookings."},
+        400: error_doc(
+            "`email` is missing or blank, `limit` isn't an integer from 1 to 50, or `cursor` "
+            "isn't one this API returned.",
+            "limit must be an integer from 1 to 50",
+            "email is required",
+            "cursor is not valid",
+        ),
+        500: INTERNAL_ERROR_DOC,
+    },
+)
+async def list_bookings(
+    # Plain strings, checked in bookings/pipes.py, so every bad value is a 400 with the
+    # contract's message; the docs still describe them as their real types.
+    email: str = Query(  # type: ignore[assignment]  # None when absent; pipes reject it
+        default=None,
+        description="Required. Whose bookings to list (case-insensitive).",
+        examples=["ada@example.com"],
+        json_schema_extra={"format": "email"},
+    ),
+    limit: str = Query(  # type: ignore[assignment]
+        default=None,
+        description=f"Page size, an integer from 1 to {MAX_LIMIT}. Default {DEFAULT_LIMIT}.",
+        examples=[DEFAULT_LIMIT],
+        json_schema_extra={
+            "type": "integer",
+            "minimum": 1,
+            "maximum": MAX_LIMIT,
+            "default": DEFAULT_LIMIT,
+        },
+    ),
+    cursor: str = Query(  # type: ignore[assignment]
+        default=None, description="`next_cursor` from the previous page. Omit for the first page."
+    ),
+    session: AsyncSession = Depends(get_session),
+):
+    return await BookingService(session).list_for_email(email, limit, cursor)
 
 
 @router.get(

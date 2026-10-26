@@ -252,6 +252,48 @@ def main() -> int:
     r = client.get(f"/bookings/{booking.get('id')}")
     check("POST /reset deletes every booking", is_error(r, 404), r.text)
 
+    # ── Level 4: paging through a person's bookings ─────────────────────────
+    page_slots = [
+        {
+            "id": f"smoke-page-{i}",
+            "provider": "Dr Ade",
+            "start": iso(start + timedelta(days=1, hours=i)),
+            "end": iso(start + timedelta(days=1, hours=i, minutes=30)),
+        }
+        for i in range(5)
+    ]
+    client.post("/reset", json={"slots": page_slots})
+    made = [
+        client.post(
+            "/bookings",
+            json={"slot_id": s["id"], "name": "Pager", "email": "Pager@Example.com"},
+        ).json()["id"]
+        for s in page_slots
+    ]
+    seen, sizes, cursor = [], [], None
+    for _ in range(10):
+        params = {"email": "  PAGER@example.COM ", "limit": 2}
+        if cursor:
+            params["cursor"] = cursor
+        page = client.get("/bookings", params=params).json()
+        sizes.append(len(page.get("bookings", [])))
+        seen += [b["id"] for b in page.get("bookings", [])]
+        cursor = page.get("next_cursor")
+        if cursor is None:
+            break
+    check(
+        "GET /bookings pages: oldest first, each once, ends with next_cursor null",
+        seen == made and sizes == [2, 2, 1] and cursor is None,
+        f"sizes {sizes}",
+    )
+    for limit in ("0", "51", "abc"):
+        r = client.get("/bookings", params={"email": "pager@example.com", "limit": limit})
+        check(f"GET /bookings limit={limit}: 400", is_error(r, 400), r.text)
+    r = client.get("/bookings")
+    check("GET /bookings without email: 400", is_error(r, 400), r.text)
+    r = client.get("/bookings", params={"email": "pager@example.com", "cursor": "nonsense"})
+    check("GET /bookings with a bad cursor: 400", is_error(r, 400), r.text)
+
     print(f"\n{'All checks passed' if not failures else f'{failures} check(s) failed'}")
     return 1 if failures else 0
 

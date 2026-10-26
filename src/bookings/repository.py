@@ -1,12 +1,13 @@
 import uuid
 
-from sqlalchemy import select, update
+from sqlalchemy import select, tuple_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bookings.enums import BookingStatus
 from src.bookings.exceptions import SlotAlreadyBooked
 from src.bookings.models import Booking
+from src.bookings.pipes import Cursor
 
 # The partial unique index that allows one confirmed booking per slot (migration 0001).
 ONE_CONFIRMED_PER_SLOT = "uq_bookings_slot_confirmed"
@@ -65,3 +66,18 @@ class BookingRepository:
     async def exists(self, booking_id: uuid.UUID) -> bool:
         result = await self.session.execute(select(Booking.id).where(Booking.id == booking_id))
         return result.first() is not None
+
+    async def page_for_email(self, email: str, after: Cursor | None, limit: int) -> list[Booking]:
+        """Up to `limit` bookings for one email, oldest first, after the cursor position.
+
+        Keyset paging on (created_at, id): the next page starts strictly after the last row
+        returned, so new bookings can't shift rows onto a page twice or skip them, and id
+        breaks ties between bookings created at the same instant. Uses ix_bookings_email_page.
+        """
+        query = select(Booking).where(Booking.email == email)
+        if after is not None:
+            query = query.where(
+                tuple_(Booking.created_at, Booking.id) > tuple_(after.created_at, after.booking_id)
+            )
+        query = query.order_by(Booking.created_at, Booking.id).limit(limit)
+        return list((await self.session.execute(query)).scalars())

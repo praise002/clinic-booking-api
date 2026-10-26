@@ -1,6 +1,8 @@
-"""Level 4: a retried request never creates a duplicate booking (task-1.md)."""
+"""Level 4: a retried request never creates a duplicate booking, and a person can page through
+their bookings (task-1.md)."""
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 import json
 
 from httpx import AsyncClient
@@ -201,3 +203,172 @@ async def test_reset_forgets_idempotency_keys(client: AsyncClient, slots):
 
     assert after.status_code == 201
     assert after.json()["id"] != first.json()["id"]
+
+
+# ── Paging through a person's bookings ───────────────────────────────────────
+
+
+def many_slots(n: int) -> list[dict]:
+    first = datetime(2030, 2, 1, 9, tzinfo=UTC)
+    return [
+        {
+            "id": f"p{i:02}",
+            "provider": "Dr Ade",
+            "start": (first + timedelta(hours=i)).isoformat(),
+            "end": (first + timedelta(hours=i, minutes=30)).isoformat(),
+        }
+        for i in range(n)
+    ]
+
+
+async def book_many(client: AsyncClient, n: int, email: str = "ada@example.com") -> list[str]:
+    """n bookings for one email, interleaved with someone else's; returns ids, oldest first."""
+    await client.post("/reset", json={"slots": many_slots(2 * n)})
+    ids = []
+    for i in range(n):
+        mine = await client.post(
+            "/bookings", json={"slot_id": f"p{2 * i:02}", "name": "Ada", "email": email}
+        )
+        assert mine.status_code == 201, mine.text
+        ids.append(mine.json()["id"])
+        other = await client.post(
+            "/bookings",
+            json={"slot_id": f"p{2 * i + 1:02}", "name": "Bo", "email": "bo@example.com"},
+        )
+        assert other.status_code == 201
+    return ids
+
+
+async def walk(client: AsyncClient, email: str, limit: int | None = None) -> list[list[dict]]:
+    pages, cursor = [], None
+    while True:
+        params = {"email": email}
+        if limit is not None:
+            params["limit"] = limit
+        if cursor is not None:
+            params["cursor"] = cursor
+        response = await client.get("/bookings", params=params)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert set(body) == {"bookings", "next_cursor"}
+        pages.append(body["bookings"])
+        cursor = body["next_cursor"]
+        if cursor is None:
+            return pages
+        assert len(pages) < 50, "paging never ended"
+
+
+async def test_pages_walk_every_booking_once_oldest_first(client: AsyncClient):
+    ids = await book_many(client, 25)
+
+    pages = await walk(client, "ada@example.com", limit=10)
+
+    assert [len(p) for p in pages] == [10, 10, 5]
+    assert [b["id"] for page in pages for b in page] == ids
+    assert all(b["email"] == "ada@example.com" for page in pages for b in page)
+
+
+async def test_the_default_page_size_is_10(client: AsyncClient):
+    await book_many(client, 12)
+
+    body = (await client.get("/bookings", params={"email": "ada@example.com"})).json()
+
+    assert len(body["bookings"]) == 10
+    assert body["next_cursor"] is not None
+
+
+async def test_an_exact_multiple_ends_without_an_empty_page(client: AsyncClient):
+    await book_many(client, 20)
+
+    pages = await walk(client, "ada@example.com", limit=10)
+
+    assert [len(p) for p in pages] == [10, 10]
+
+
+async def test_the_email_match_ignores_case_and_spaces(client: AsyncClient):
+    ids = await book_many(client, 3)
+
+    pages = await walk(client, "  ADA@Example.COM ")
+
+    assert [b["id"] for b in pages[0]] == ids
+
+
+async def test_cancelled_bookings_are_included(client: AsyncClient):
+    ids = await book_many(client, 3)
+    await client.delete(f"/bookings/{ids[1]}")
+
+    bookings = (await walk(client, "ada@example.com"))[0]
+
+    assert [(b["id"], b["status"]) for b in bookings] == [
+        (ids[0], "confirmed"),
+        (ids[1], "cancelled"),
+        (ids[2], "confirmed"),
+    ]
+
+
+async def test_an_email_with_no_bookings_gets_an_empty_last_page(client: AsyncClient, slots):
+    response = await client.get("/bookings", params={"email": "nobody@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {"bookings": [], "next_cursor": None}
+
+
+async def test_bookings_made_at_the_same_instant_still_page_without_gaps(client: AsyncClient):
+    # created_at ties are broken by id, so a page boundary between them loses nothing.
+    await client.post("/reset", json={"slots": many_slots(7)})
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO bookings (id, slot_id, name, email, status, created_at) "
+                "SELECT gen_random_uuid(), id, 'Ada', 'ada@example.com', 'confirmed', "
+                "'2026-10-01T12:00:00Z' FROM slots"
+            )
+        )
+        expected = [
+            str(row[0])
+            for row in await conn.execute(text("SELECT id FROM bookings ORDER BY created_at, id"))
+        ]
+
+    pages = await walk(client, "ada@example.com", limit=3)
+
+    assert [len(p) for p in pages] == [3, 3, 1]
+    assert [b["id"] for page in pages for b in page] == expected
+
+
+@pytest.mark.parametrize("limit", ["1", "50"])
+async def test_limit_accepts_1_to_50(client: AsyncClient, slots, limit: str):
+    response = await client.get("/bookings", params={"email": "ada@example.com", "limit": limit})
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("limit", ["0", "51", "-1", "abc", "1.5", ""])
+async def test_any_other_limit_is_400(client: AsyncClient, slots, limit: str):
+    response = await client.get("/bookings", params={"email": "ada@example.com", "limit": limit})
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "limit must be an integer from 1 to 50"}
+
+
+@pytest.mark.parametrize("params", [{}, {"email": ""}, {"email": "   "}])
+async def test_the_email_is_required(client: AsyncClient, slots, params: dict):
+    response = await client.get("/bookings", params=params)
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "email is required"}
+
+
+@pytest.mark.parametrize(
+    "cursor",
+    [
+        "garbage!",
+        "bm90IGEgY3Vyc29y",  # base64 of "not a cursor"
+        "MjAyNi0xMC0wMVQxMjowMDowMHxub3QtYS11dWlk",  # "2026-10-01T12:00:00|not-a-uuid"
+        "",
+    ],
+)
+async def test_a_bad_cursor_is_400(client: AsyncClient, slots, cursor: str):
+    response = await client.get("/bookings", params={"email": "ada@example.com", "cursor": cursor})
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "cursor is not valid"}

@@ -66,3 +66,13 @@ class BookingResponse(BaseModel):
             status=booking.status,
             created_at=booking.created_at,
         )
+
+
+class BookingListResponse(BaseModel):
+    bookings: list[BookingResponse] = Field(description="Oldest first; cancelled ones included.")
+    next_cursor: str | None = Field(
+        description="Pass back as `cursor` for the next page; `null` on the last page.",
+        examples=[
+            "MjAyNi0xMC0yNVQyMzoyMDoxMy4wMzArMDA6MDB8N2U0NzNlZDAtNmI5OC00YjczLWEzYzItMmI0ZWRlMmU5MWNi"
+        ],
+    )

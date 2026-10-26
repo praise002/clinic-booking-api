@@ -6,9 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bookings.exceptions import BookingAlreadyCancelled, BookingNotFound, SlotStarted
 from src.bookings.models import Booking
-from src.bookings.pipes import parse_new_booking
+from src.bookings.pipes import (
+    Cursor,
+    decode_cursor,
+    encode_cursor,
+    parse_limit,
+    parse_list_email,
+    parse_new_booking,
+)
 from src.bookings.repository import BookingRepository
-from src.bookings.schemas import BookingResponse
+from src.bookings.schemas import BookingListResponse, BookingResponse
 from src.core.errors import status_for
 from src.core.exceptions import BadRequest, Conflict, NotFound
 from src.idempotency.service import IdempotencyService, StoredResponse
@@ -71,6 +78,20 @@ class BookingService:
         if booking is None:
             raise BookingNotFound()
         return BookingResponse.from_model(booking)
+
+    async def list_for_email(
+        self, email: str | None, limit: str | None, cursor: str | None
+    ) -> BookingListResponse:
+        """One page of a person's bookings. Fetches one extra row to know if there's more."""
+        page_size = parse_limit(limit)
+        rows = await self.bookings.page_for_email(
+            parse_list_email(email), decode_cursor(cursor), page_size + 1
+        )
+        page, more = rows[:page_size], len(rows) > page_size
+        next_cursor = encode_cursor(Cursor(page[-1].created_at, page[-1].id)) if more else None
+        return BookingListResponse(
+            bookings=[BookingResponse.from_model(b) for b in page], next_cursor=next_cursor
+        )
 
     async def cancel(self, booking_id: str) -> BookingResponse:
         parsed_id = _parse_booking_id(booking_id)

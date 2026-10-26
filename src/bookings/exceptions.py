@@ -25,3 +25,9 @@ class SlotAlreadyBooked(Conflict):
 
 class BookingAlreadyCancelled(Conflict):
     message = "booking already cancelled"
+
+
+class InvalidListQuery(BadRequest):
+    """A bad email, limit or cursor on GET /bookings. The message names it."""
+
+    message = "invalid query"
