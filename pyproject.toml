@@ -29,6 +29,10 @@ prod = [
 [tool.uv]
 package = false
 
+# Vercel: the API runs as one Python function serving this FastAPI app.
+[tool.vercel]
+entrypoint = "src.main:app"
+
 [tool.ruff]
 line-length = 99
 src = ["src"]

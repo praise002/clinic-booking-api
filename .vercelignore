@@ -1,0 +1,23 @@
+# Never upload local secrets.
+.env
+.env.*
+!.env.example
+
+# Not needed at runtime on Vercel (migrations run once from a laptop; Railway/Docker unused).
+.venv/
+tests/
+docs/
+scripts/
+migrations/
+alembic.ini
+.railway/
+Dockerfile
+Dockerfile.dev
+compose.yaml
+Makefile
+.claude/
+CLAUDE.md
+task-1.md
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/

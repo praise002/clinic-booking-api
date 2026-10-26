@@ -4,11 +4,12 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from src.bookings.models import Booking  # noqa: F401  (registers the table on Base.metadata)
 from src.config import settings
 from src.database import Base
+from src.db_options import engine_options
 from src.idempotency.models import IdempotencyKey  # noqa: F401
 from src.slots.models import Slot  # noqa: F401
 
@@ -72,11 +73,9 @@ async def run_async_migrations() -> None:
 
     """
 
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Same URL handling as the app (Neon's sslmode, pooler), one connection, no pool.
+    url, connect_args = engine_options(settings.DATABASE_URL)
+    connectable = create_async_engine(url, connect_args=connect_args, poolclass=pool.NullPool)
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

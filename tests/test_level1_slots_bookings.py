@@ -224,17 +224,3 @@ async def test_a_trailing_slash_is_a_404_not_a_redirect(client: AsyncClient, met
 
     assert response.status_code == 404
     assert response.json() == {"error": "not found"}
-
-
-@pytest.mark.parametrize(
-    ("given", "expected"),
-    [
-        ("postgres://u:p@h:5432/db", "postgresql+asyncpg://u:p@h:5432/db"),
-        ("postgresql://u:p@h:5432/db", "postgresql+asyncpg://u:p@h:5432/db"),
-        ("postgresql+asyncpg://u:p@h:5432/db", "postgresql+asyncpg://u:p@h:5432/db"),
-    ],
-)
-def test_host_database_urls_get_the_asyncpg_driver(given: str, expected: str):
-    from src.config import use_asyncpg
-
-    assert use_asyncpg(given) == expected

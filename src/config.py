@@ -5,8 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def use_asyncpg(url: str) -> str:
-    """Railway (and most hosts) hand out postgres:// or postgresql:// URLs; the app's
-    engine needs the asyncpg driver named in the scheme."""
+    """Hosts (Neon, Railway, most others) hand out postgres:// or postgresql:// URLs; the
+    app's engine needs the asyncpg driver named in the scheme."""
     for prefix in ("postgres://", "postgresql://"):
         if url.startswith(prefix):
             return "postgresql+asyncpg://" + url[len(prefix) :]
@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = 20
     DB_POOL_TIMEOUT: int = 30
     REDIS_URL: str = "redis://localhost:6396/0"
+    # How long the rate limit waits on Redis before letting the booking through (fail open).
+    REDIS_TIMEOUT_SECONDS: float = 0.5
     # Every request except GET /health must send this as X-API-Key.
     API_KEY: str = Field(min_length=1)
 
