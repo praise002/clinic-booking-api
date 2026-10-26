@@ -51,7 +51,7 @@ Run the test and lint commands from `docs/spec.md` (`Where It Runs and How Someo
 - **Zero tests collected is a fail**, not a pass.
 - If a command cannot run (no database, no network), say which and why, and mark the affected rows `not verified`. Never infer a pass from unrun tooling.
 
-Then **run `scripts/smoke-test.sh`**, every time, against local and (once it exists) the deployed URL via `BASE_URL`. Paste the real `OK`/`FAIL` output. A green suite with a failing smoke test is **not verified**: report it as a finding, not a footnote. Also check the script itself: every requirement row in scope should have a `check` line, and a missing one is a `minor` finding (a `major` one for a level-3+ behavior). A missing script is a `major` finding.
+Then **run `scripts/smoke.py`** (the smoke script named in `docs/spec.md`), every time, against local and (once it exists) the deployed URL via `BASE_URL`. Paste the real `OK`/`FAIL` output. A green suite with a failing smoke test is **not verified**: report it as a finding, not a footnote. Also check the script itself: every requirement row in scope should have a `check` line, and a missing one is a `minor` finding (a `major` one for a level-3+ behavior). A missing script is a `major` finding.
 
 Then **exercise the running app over HTTP** beyond what the smoke script covers (local, and the deployed URL once one exists): `POST /reset`, then the requests that prove each row, with `curl -i` so status codes and headers are visible. Paste the output. Pay special attention to the things unit tests most often miss:
 

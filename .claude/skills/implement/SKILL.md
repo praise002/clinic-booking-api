@@ -83,7 +83,7 @@ A slice is never ticked on inspection. Reading the code you wrote is not proof; 
 
 A green test suite proves this slice's behavior works *in isolation*. It doesn't prove the app actually boots and serves real requests: a bad environment variable, a migration that doesn't apply to a fresh database, a broken start command, or a route registered in the test setup but not the real app can all pass every test. **Every slice runs the smoke test after the suite, not just when something feels risky.**
 
-`scripts/smoke-test.sh` is a plain `curl` script, independent of the stack, so it can run against local and deployed URLs alike:
+`scripts/smoke.py` (named in `docs/spec.md`) is a plain HTTP script using httpx, so it can run against local and deployed URLs alike:
 
 - Reads `BASE_URL` (default `http://localhost:<port from spec.md>`) and `API_KEY` from the environment. Never hardcode the real key.
 - Starts from `POST /reset` with known slots (one in the past, a few in the future), so every run is repeatable.

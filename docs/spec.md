@@ -144,7 +144,7 @@ From `prd.md > Look and Feel` and `scope.md > Inspiration & Identity`: plain and
   - Then clears every Redis `ratelimit:*` key.
   - Returns `200 {"status": "ok"}`.
 - **`GET /slots?provider=`:** exact match. Ordered by `start_at, id`. `available` is `true` unless the slot has a confirmed booking (agreed in `4-spec`; a slot that has started but isn't booked still shows `available: true`).
-- **Datetimes** are returned in UTC with a `Z` suffix, e.g. `2026-12-10T09:00:00Z`, with fractional seconds only when non-zero.
+- **Datetimes** are returned in UTC with a `Z` suffix, e.g. `2026-12-10T09:00:00Z`, with fractional seconds only when non-zero. They are re-serialised, not echoed: `09:00:00.000Z` or `10:00:00+01:00` comes back as `09:00:00Z` (learner decision after `verify level-1`: follow the contract example's format).
 - PRD ref: `prd.md > Slots`, `prd.md > Admin Reset`.
 
 ### API: Bookings (`POST /bookings`)
