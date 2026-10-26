@@ -90,6 +90,8 @@ Deploy:
 npx vercel deploy --prod                           # prints https://clinic-booking-api-<…>.vercel.app
 ```
 
+> **Use the production domain, not the long deployment URL.** `vercel deploy --prod` prints a per-deployment URL (`<project>-<hash>-<team>.vercel.app`). Vercel's default **Deployment Protection** puts those behind a Vercel login ("Protected by Vercel Authentication", or a 401/302 with a JSON `"protection"` body). The public address is the project's **production domain**, e.g. `https://clinic-booking-api.vercel.app`. Find it with `npx vercel inspect <deployment-url>` under **Aliases**, or in the dashboard under **Domains**. Use that everywhere: the checks below, the web page's `API_BASE_URL`, and the Koya submission. If the production domain also shows the login, turn it off: **Settings → Deployment Protection → Vercel Authentication → Disabled**.
+
 Vercel finds the app through `[tool.vercel] entrypoint = "src.main:app"` in `pyproject.toml`, and installs the dependencies from `uv.lock`. `.vercelignore` keeps tests, docs, migrations and every `.env` file out of the upload.
 
 ## 4. Prove the live API
@@ -97,7 +99,7 @@ Vercel finds the app through `[tool.vercel] entrypoint = "src.main:app"` in `pyp
 From **API**, with the URL from step 3:
 
 ```bash
-export BASE_URL=https://clinic-booking-api-<…>.vercel.app
+export BASE_URL=https://<production-domain>.vercel.app      # NOT the long per-deployment URL
 export API_KEY=$(grep ^API_KEY .env.production | cut -d= -f2-)
 
 curl -s $BASE_URL/health                                    # {"status":"ok"}
@@ -157,6 +159,7 @@ Then walk the journey in the browser: Admin reset with the key → book → find
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
+| "Protected by Vercel Authentication", or 401/302 with a `"protection"` JSON body | You're using a per-deployment URL; Deployment Protection is on | Use the production domain (`vercel inspect` → Aliases), or disable Vercel Authentication in Settings → Deployment Protection |
 | Deploy fails "no FastAPI app found" | Entrypoint not read | Check `[tool.vercel] entrypoint = "src.main:app"` is in `pyproject.toml` |
 | `500` on every request; logs mention `DATABASE_URL` or `API_KEY` | An env var is missing | `npx vercel env ls`, add it, `npx vercel deploy --prod` |
 | `500`; logs: `relation "slots" does not exist` | Migrations not run | Step 1.4 |

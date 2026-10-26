@@ -28,6 +28,14 @@ def check(name: str, condition: bool, detail: object = "") -> None:
         print(f"FAIL  {name}  {detail}")
 
 
+def json_body(response: httpx.Response):
+    """The JSON body, or {} when the response isn't JSON (a host's login page, an HTML error)."""
+    try:
+        return response.json()
+    except ValueError:
+        return {}
+
+
 def is_error(response: httpx.Response, status: int, message: str | None = None) -> bool:
     """The contract's error shape: the status, and a body of exactly {"error": <message>}."""
     try:
@@ -79,12 +87,12 @@ def main() -> int:
     r = client.post("/reset", json={"slots": slots})
     check(
         "POST /reset is 200 {status: ok}",
-        r.status_code == 200 and r.json() == {"status": "ok"},
+        r.status_code == 200 and json_body(r) == {"status": "ok"},
         r.text,
     )
 
     r = client.get("/slots")
-    listed = r.json().get("slots", []) if r.status_code == 200 else []
+    listed = json_body(r).get("slots", []) if r.status_code == 200 else []
     check(
         "GET /slots is 200, earliest first, past slots kept",
         [s["id"] for s in listed] == ["smoke-past", "smoke-1", "smoke-2"],
@@ -92,20 +100,20 @@ def main() -> int:
     )
     check(
         "GET /slots marks free slots available",
-        all(s["available"] is True for s in listed),
+        bool(listed) and all(s["available"] is True for s in listed),
         listed,
     )
 
     r = client.get("/slots", params={"provider": "Dr Ade"})
     check(
         "GET /slots?provider= is an exact match",
-        [s["id"] for s in r.json().get("slots", [])] == ["smoke-1"],
+        [s["id"] for s in json_body(r).get("slots", [])] == ["smoke-1"],
         r.text,
     )
 
     good_booking = {"slot_id": "smoke-1", "name": "Ada Obi", "email": "ada@example.com"}
     r = client.post("/bookings", json=good_booking)
-    booking = r.json()
+    booking = json_body(r)
     check(
         "POST /bookings is 201 confirmed",
         r.status_code == 201 and booking.get("status") == "confirmed",
@@ -124,12 +132,12 @@ def main() -> int:
     r = client.get(f"/bookings/{booking.get('id')}")
     check(
         "GET /bookings/{id} returns the same booking",
-        r.status_code == 200 and r.json() == booking,
+        r.status_code == 200 and json_body(r) == booking,
         r.text,
     )
 
     r = client.get("/slots")
-    available = {s["id"]: s["available"] for s in r.json().get("slots", [])}
+    available = {s["id"]: s["available"] for s in json_body(r).get("slots", [])}
     check(
         "the booked slot is now unavailable",
         available == {"smoke-past": True, "smoke-1": False, "smoke-2": True},
@@ -211,7 +219,7 @@ def main() -> int:
         "/bookings",
         json={"slot_id": "smoke-2", "name": "  Ada Obi  ", "email": "  Trim.Check@Example.COM "},
     )
-    trimmed = r.json() if r.status_code == 201 else {}
+    trimmed = json_body(r) if r.status_code == 201 else {}
     check(
         "name trimmed, email trimmed and lower-cased",
         (trimmed.get("name"), trimmed.get("email")) == ("Ada Obi", "trim.check@example.com"),
@@ -226,7 +234,7 @@ def main() -> int:
     r = client.delete(f"/bookings/{booking.get('id')}")
     check(
         "DELETE /bookings/{id} is 200 cancelled",
-        r.status_code == 200 and r.json() == {**booking, "status": "cancelled"},
+        r.status_code == 200 and json_body(r) == {**booking, "status": "cancelled"},
         r.text,
     )
     r = client.delete(f"/bookings/{booking.get('id')}")
@@ -236,7 +244,7 @@ def main() -> int:
     check("cancelling an unknown booking is 404", is_error(r, 404), r.text)
 
     r = client.get("/slots")
-    freed = {s["id"]: s["available"] for s in r.json().get("slots", [])}.get("smoke-1")
+    freed = {s["id"]: s["available"] for s in json_body(r).get("slots", [])}.get("smoke-1")
     check("the cancelled booking's slot is available again", freed is True, r.text)
 
     r = client.post("/bookings", json={**good_booking, "email": "rebook@example.com"})
@@ -250,7 +258,7 @@ def main() -> int:
     again = client.post("/bookings", json=retry_body, headers=key)
     check(
         "same Idempotency-Key + body: same status and booking id",
-        first.status_code == again.status_code == 201 and first.json() == again.json(),
+        first.status_code == again.status_code == 201 and json_body(first) == json_body(again),
         f"{first.text} / {again.text}",
     )
     r = client.post("/bookings", json={**retry_body, "name": "Someone Else"}, headers=key)
@@ -277,10 +285,12 @@ def main() -> int:
     ]
     client.post("/reset", json={"slots": page_slots})
     made = [
-        client.post(
-            "/bookings",
-            json={"slot_id": s["id"], "name": "Pager", "email": "Pager@Example.com"},
-        ).json()["id"]
+        json_body(
+            client.post(
+                "/bookings",
+                json={"slot_id": s["id"], "name": "Pager", "email": "Pager@Example.com"},
+            )
+        ).get("id")
         for s in page_slots
     ]
     seen, sizes, cursor = [], [], None
@@ -288,7 +298,7 @@ def main() -> int:
         params = {"email": "  PAGER@example.COM ", "limit": 2}
         if cursor:
             params["cursor"] = cursor
-        page = client.get("/bookings", params=params).json()
+        page = json_body(client.get("/bookings", params=params))
         sizes.append(len(page.get("bookings", [])))
         seen += [b["id"] for b in page.get("bookings", [])]
         cursor = page.get("next_cursor")
