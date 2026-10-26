@@ -97,5 +97,7 @@ src/
 migrations/          Alembic: 0001 schema (incl. the partial unique index), 0002 json responses
 src/db_options.py    database URL handling for hosts (Neon sslmode, poolers)
 scripts/             runner.sh, smoke.py, concurrency.py
-docs/                scope, PRD, spec, build checklist, verification report
+docs/                scope, PRD, spec, build checklist, verification report, deploy guide
+.claude/skills/      the workflow skills (planning, build, implement, verify, ship) for Claude Code
+.agents/skills/      the same skills for other coding agents; AGENTS.md mirrors CLAUDE.md
 ```

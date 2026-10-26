@@ -24,7 +24,7 @@ Before anything else, look at the project's `docs/`. Never infer progress from c
 
 Do this before you say anything else on a first visit. The learner should be running their agent in a folder set aside for this project — not their home directory, not their downloads, not an unrelated repository.
 
-Look at the current directory. **Ignore curriculum material**: dotfiles (`.git`, `.claude`, and the like), `skills/`, `docs/`, and anything else that shipped with this course. Those are supposed to be here. What matters is an *unrelated* existing project — someone else's source tree, or a repo they didn't create for this.
+Look at the current directory. **Ignore curriculum material**: dotfiles (`.git`, `.claude`, `.agents`, and the like), `skills/`, `docs/`, and anything else that shipped with this course. Those are supposed to be here. What matters is an *unrelated* existing project — someone else's source tree, or a repo they didn't create for this.
 
 If that's what you see, say warmly: "This folder looks like it already has another project in it. This works best in a folder you've set aside just for your hackathon project — I'd stop here and start again in one, so nothing gets tangled up." Then stop. **Never offer to move to a different folder** — that would move them away from where their harness found these skills.
 

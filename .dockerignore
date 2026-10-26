@@ -6,6 +6,7 @@ __pycache__
 .git
 .vscode
 .claude
+.agents
 **/.env
 **/.env.*
 docs/

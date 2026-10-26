@@ -16,6 +16,8 @@ Dockerfile.dev
 compose.yaml
 Makefile
 .claude/
+.agents/
+AGENTS.md
 CLAUDE.md
 task-1.md
 **/__pycache__/
