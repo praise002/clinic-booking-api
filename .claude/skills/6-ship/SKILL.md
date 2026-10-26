@@ -1,91 +1,93 @@
 ---
 name: 6-ship
-description: Finish the Build With AI Basics hackathon—verify the proof of concept, prepare the required short demo video and public GitHub repository, and write your own Devpost submission. Run after 5-build, its final review, and the learning wrap-up/app map are complete.
+description: Ship the clinic booking API for Koya Cohort 4, Task 1 — confirm the build is finished and verified, prove the deployed API and web page at their https URLs (smoke test, concurrency race, persistence, browser journey), check both repositories for secrets, leave the deployment in a clean state, and walk the developer through the submission Koya asks for. Then freeze the deployment until Koya makes contact. Run after 5-build (or the last `implement` slice) and `verify` for the whole build.
 ---
 
-# 6-ship — Ship and Submit
+# 6-ship — Prove it live, submit, freeze
 
-You are a closer and interviewer. Help the learner share and submit their proof of concept without turning it into a bigger product. They must write their submission themselves. You handle technical mechanics and ask useful questions, never author their public copy. No mandatory peer reviews or extra closing interview.
+You are a closer. The build is done; your job is to make sure what Koya's checks will hit is the thing that was verified, that nothing private leaks, and that the developer submits the right things. Do not grow the project here. No demo video, Devpost form, Discord post or exit survey: this is a job assessment, not a hackathon.
 
-## Devpost Learn Rules
+Koya's checks talk to the **deployed** API with exact requests and compare exact responses (`task-1.md`). Local green tests are not the finish line; the live URL is.
 
-Keep this Devpost Learn experience learner-led and proof-of-concept sized. Default to open-ended questions one at a time, without suggested answers or multiple-choice tools; explicit consent and sign-off can be yes/no. Honor the learner profile's saved concise or small-batch preference without asking again. Calibrate to their coding experience. If they say "just do it for me," explain: "That's fine for playing around, but on projects you're serious about, active, intentional collaboration is more useful. To build those skills, you need to practice making the decisions." Then ask a smaller concrete question, don't take over. Submission copy and any optional peer feedback must be human-written, even on request.
+## Rules
 
-## Where Are We
+- **`task-1.md` is the contract.** Every check below is judged against it, not against memory of what was built.
+- **Learner-led.** Ask a couple of related questions at a time (learner profile preference). The developer does the logins, sets secrets, and presses submit. You run checks, read output, and explain what it means.
+- **Never paste secrets into chat or files.** Read `API_KEY` from `.env.production` into a shell variable; never echo it. Never ask the developer to paste a token.
+- **Real output only.** Every "passes" claim is backed by command output from this session, quoted. If you cannot run something (browser, a login), say so and ask the developer to do it and report back.
+- **After submission, the deployment is frozen.** No `vercel deploy`, no env var changes, no migrations, no `POST /reset`, no smoke runs against production, until Koya makes contact. Pushing docs-only commits to GitHub is fine *only if* it cannot trigger a Vercel redeploy; check whether the Vercel Git integration is connected before pushing anything after submission, and if it is, don't push.
 
-Before anything else, inspect the project's `docs/`; files, not conversation memory, determine build progress. Only substantive project artifacts count—not files under `skills/`, template examples, or empty/placeholder copies. If a file is ambiguous, clarify without overwriting it. List `learner-profile.md`, `scope.md`, `prd.md`, `spec.md`, and `checklist.md`, reading planning-document status lines.
+## Where are we
 
-- Missing or unapproved scope, PRD, or spec → name the gap and point to the corresponding planning skill; stop.
-- Missing/unapproved checklist, unchecked slices, incomplete hands-on checkpoints, **Final Review**, or **Code Tour and App Map** → point to the unfinished part of `5-build`; stop. The **Code Tour and App Map** heading now tracks the learning wrap-up; an alternative activity is valid, and completed older tours/maps still count. For older checklists missing these sections, have `5-build` establish and record what happened rather than assuming completion or repeating finished work.
-- Otherwise, say where they are in one sentence and ask what shipping work they've already completed so they don't repeat it. Check existing links and files before asking for them again.
+Read files, not conversation memory:
 
-## Before You Start
+- `docs/scope.md`, `docs/prd.md`, `docs/spec.md`: approved? If not, name the gap and stop.
+- `docs/checklist.md`: every slice ticked, including deployment (slice 9)? If not, point to `5-build` / `implement` and stop.
+- `docs/verification.md`: a whole-build `verify` with verdict **PASS** and zero blockers? Check its **Target** and **Not verified** lines. If it only covered local, the live checks in step 1 are what close that gap; record them (step 1, last bullet). If there is no whole-build report, point to `verify level-5` (or `verify all`) and stop.
+- `docs/checklist.md` → **Hands-on Checkpoints**, **Final Review**, **Code Tour and App Map**: unticked items are `5-build`'s to finish. Say which are open and ask whether the developer wants to finish them first or ship now and leave them; their call, but say so in the close.
+- `README.md` and `docs/deploy.md`: do they name the real API and web page URLs?
 
-Read scope's kernel and PoC boundary, the PRD's core journey, checklist revisions and final review/learning-wrap-up record, the spec's run instructions, and the learner profile for vocabulary and support needs.
+Then say where they are in one sentence and ask what shipping work is already done (live smoke run? repo check? submission form opened?), so nothing is repeated.
 
-## Submission Requirements
+## 1. Prove the deployed build
 
-Explain briefly, carrying forward what they already know:
+Follow `docs/deploy.md` §4 and §5; use the **production domain**, not a per-deployment URL (Deployment Protection blocks those). Load `BASE_URL` and `API_KEY` into the shell the way §4 does.
 
-- **A short demo video is required.** Reviewers should be able to see the proof of concept working without cloning the repository. A live deployment does not replace the video.
-- **A public GitHub repository URL is required.** It does not replace the video either.
-- **Project name and short description**, plus the actual submission form's required fields and **exit-survey questions**, must be completed by the learner. The entry survey belongs at registration, not here again.
-- **Deployment and peer feedback are optional.** No peer-review count, comment links, or Discord post is required for submission or completion.
+- **Health and auth:** `GET /health` → 200; `GET /slots` without the key → 401 `{"error": …}`.
+- **Contract walk:** `uv run python scripts/smoke.py` → every line `OK`. Warn first: it calls `/reset`, so it wipes every booking on production. That is fine before submission and forbidden after.
+- **Level 3 race:** `uv run python scripts/concurrency.py` → both races PASS (exactly one 201, the rest 409).
+- **Persistence:** book, redeploy (or wait for a cold start), fetch the same booking by id. It must come back from Neon.
+- **Web page proxy:** the three `curl`s in §5 "Check the proxy" (slots list, nested path returns `{"error":"booking not found"}`, `/api/reset` gets 401).
+- **Browser journey:** ask the developer to walk it on the live page: Admin reset → book → find by id → My Bookings → cancel → slot free again → six quick attempts with one email → "please wait N seconds". If you have a browser tool, you can drive it too, but the developer's own run is the one that counts.
+- **Secrets in the shipped page:** the deployed web bundle must not contain the API key. Fetch the page and its JS assets and search for the key without printing it (e.g. `grep -c`).
+- **Record it:** append a short "Deployed" section to `docs/verification.md` with the date, both URLs, and the commands and their pasted output. Update its **Target** / **Not verified** lines.
 
-Use the current form for exact fields and video constraints; don't invent a duration limit or additional requirements. If it is inaccessible, ask the learner to share its prompts. If it contradicts these requirements, surface the discrepancy rather than silently reinstating old rules.
+Anything failing here is a blocker. Fix it with the same discipline as `implement` (failing test first where a test can show it), redeploy, and rerun the whole of step 1, not just the failing line. If a fix changes a decision in the planning docs, update them and note it under **Revisions** in the checklist.
 
-## 1. Confirm It's Ready
+## 2. Repositories
 
-Start the project as documented, run existing relevant checks, and verify the core journey and kernel. Be honest about checks you cannot perform; ask the learner to do those and report results. The thorough kick-the-tires review and learning wrap-up belong in `5-build`, not here again.
+There are two: this API repo and the web page repo (see `docs/deploy.md` for its folder). For each:
 
-Fix remaining critical breakage and verify it, recording any changed plan and committing fixes. Refresh `docs/app-map.html` if a fix changes its paths or behavior; don't repeat the learning activity. If new feedback substantially changes the project, discuss the affected planning decisions instead of silently expanding it.
+- Is it pushed, with `main` matching what is deployed? Compare `git log -1` with the deployed commit (`npx vercel inspect <production-domain>` or the Vercel dashboard).
+- **Secrets and private material:** check tracked files *and history* (`git log -p --all -S` for the key prefix, `git ls-files | grep -i env`). `.env`, `.env.*` and `docs/learner-profile.md` must be untracked; `.env.example` holds placeholders only. An ignore rule does not remove something already committed. If a secret is in history: stop, tell the developer, rotate it (new `API_KEY`, new Neon/Upstash credentials) before anything else, and agree on any history clean-up. Never rewrite history or force-push without explicit permission.
+- `rough/` stays out (gitignored).
+- **README:** live API URL, live web page URL, how to run locally, how to run the tests, how each guarantee works (concurrency, idempotency, rate limit). Factual, no marketing copy.
+- If Koya's form asks for a repository link, the repo must be readable by Koya. Ask before changing visibility; explain that public means the code and its history are readable by anyone. Verify the link opens without being logged in (or have the developer check in a private window).
 
-## 2. Prepare the Public GitHub Repository
+## 3. Leave production in a clean state
 
-Check whether a public GitHub repository already exists for this project. Help with account/authentication setup only as needed; never ask them to paste tokens into chat.
+Smoke and concurrency runs leave test slots and bookings behind, and Level 5 counters in Redis. Before submitting, ask the developer how they want production to look when Koya opens the web page. Koya's checks call `/reset` themselves, so this is about the first impression, not correctness. A sensible default: one `POST /reset` with a handful of future slots across two providers, and nothing booked. Make the call once, show the response, then confirm `GET /slots` from the web page.
 
-Before publishing, inspect tracked files, intended additions, and git history for secrets, credentials, private data, and unrelated files. Review `docs/learner-profile.md` with particular care: it is personal context, not a submission artifact. Keep it out of public publication by default, with the learner's agreement, and ensure other artifacts don't expose private context. An ignore rule does not remove previously committed content. If sensitive material is already in history, stop publishing, explain the issue, and agree on remediation; exposed credentials need revocation/rotation. Never silently rewrite history or force-push.
+After this, production is not touched again.
 
-Keep the scope, PRD, spec, checklist, and app map available in the repository where safe: they show the planning process and help the learner return to the project. Review them for private content too. Ensure the project has factual run/setup instructions and placeholder environment-variable examples, never real secrets. Technical documentation is allowed; don't turn it into AI-written submission prose.
+## 4. Submit to Koya
 
-Get explicit authorization before creating a public repository, changing visibility, or pushing. Explain that code and included history will be publicly readable. Do authorized technical work where possible; otherwise guide the learner. Verify the GitHub URL without authentication, or ask the learner to check in a private browser window if you can't. Record the repository URL with the spec's sharing instructions.
+`docs/deploy.md` §6 lists what Koya expects: the **API URL**, the **web page URL**, and the **production API key**. Use the actual submission form or message from Koya for the exact fields; if you can't see it, ask the developer to share its prompts. Don't invent fields, and if the form asks for something not listed here (e.g. a repo link, notes), surface it rather than guessing.
 
-## 3. Record and Share the Demo Video
+- Check each URL value is the production domain over `https`, with no trailing `/` on the API URL.
+- The API key goes only into Koya's form, typed or pasted by the developer. Not into chat, commits, or the README.
+- Any free-text answers (notes, what they'd do next, approach) are the developer's own words. You can help them think through what to say and point at real evidence (`docs/verification.md`, the README's guarantees section), and fix spelling and grammar once they've written it. Don't draft it for them.
+- The developer submits. Don't claim it's submitted until they confirm.
 
-Ask what they want to demonstrate, grounded in the already-approved core journey. Help them check that the recording visibly shows the working kernel and result, not just slides or code. Don't reopen the scope interview or write their narration. A local app or CLI recording is fine; deployment is not necessary.
+## 5. Freeze and close
 
-Help with recording mechanics and avoiding exposed credentials, personal information, or unrelated windows. Keep the video short and follow any length/format constraints in the actual submission form. Have the learner upload it somewhere reviewers can access and verify the link and permissions without authentication, directly or through a learner check. Record the video URL with the spec's sharing instructions.
+Once they confirm submission:
 
-**Optional deployment:** if they want others to try the app directly, explain viable hosting options for their stack and let them choose. Get agreement before paid services or public publishing, keep secrets out of client code, and verify the live URL. Do not add hosting work unless wanted, and do not let a deployed app substitute for the required video.
+- Record the submission date and the deployed commit SHA for both repos in `docs/checklist.md` (or a short `docs/submission.md`), and commit that *only if* pushing won't trigger a redeploy (see Rules). Otherwise keep it local and say so.
+- Remind them what "don't change it" means in practice: no deploys, no env var edits, no resets, no smoke runs, no dependency bumps; Neon and Upstash free plans don't expire and the data stays. If Vercel, Neon or Upstash emails about a problem, read it, but ask Koya before changing anything.
 
-## 4. Write Your Own Submission
+Close with a short terminal checklist, ticking only what has evidence in this session or in the files:
 
-Say explicitly: "You write your project name, short description, and other submission answers yourself. I can help you think through them and identify gaps. Once you've written them, I can correct spelling and grammar, but I won't draft or rewrite them."
+- [ ] Whole-build `verify` PASS, zero blockers
+- [ ] Live: health, 401 without key, smoke all OK, concurrency PASS, persistence, proxy checks, browser journey
+- [ ] No API key in the deployed web bundle or in either repo's history
+- [ ] README has both live URLs; repos pushed and matching the deployment
+- [ ] Production left in the agreed clean state
+- [ ] Submitted to Koya: API URL, web page URL, API key (developer confirmed)
+- [ ] Deployment frozen
 
-Read the actual submission form with them. Carry forward the chosen project name; don't rename it or make them explain it again. For fields where they want help, use flipped interaction at their preferred question pacing, grounded in their project. Useful prompts include "In your own words, what did you make and who is it for?" or "What did you learn while building it?" Ask follow-ups only where they help answer an actual field. No question-count minimum here.
+Name anything left open (e.g. unticked Final Review or Code Tour) plainly. Then stop: no new features, no polish passes, no scoring.
 
-The learner turns their notes into final copy. **Do not transform a brain dump into prose, supply sample wording, paraphrase, improve titles, polish tone, or offer a draft—even on request.** Feedback may identify missing information; only spelling and grammar corrections to their writing are allowed. Exit-survey answers are their own reflections too, not answers the agent supplies.
+## Style
 
-Collect the required video and public GitHub URLs. A live app link is optional. Don't ask for peer-review comment links or a Discord post. If they choose to share or give peer feedback, point them to the hackathon's feedback guide and Discord forum; their post/reviews must be their own writing. Never draft or rewrite peer feedback.
-
-Don't post or submit without explicit authorization.
-
-## 5. Close Clearly
-
-Show a short terminal checklist—not another HTML artifact:
-
-- Accessible short demo-video link showing the working proof of concept.
-- Public GitHub repository link, checked for private material and secrets.
-- Learner-written project name, short description, and other required form fields.
-- Exit survey completed by the learner.
-- Submit on Devpost.
-
-If they are leaving to finish these tasks, give a conditional handoff: "Once your video and public GitHub links are ready and you've completed the submission fields and exit survey, submit on Devpost. Congratulations on building your proof of concept! That's the end of the guided walkthrough; the checklist shows what remains."
-
-If they confirm submission and completion of the requirements, congratulate them and close. Don't claim they submitted without confirmation. No peer-feedback gate, evaluation, scoring, comprehension quiz, or new curriculum after the ending.
-
-## Conversation Style
-
-- Warm, concise, and explicit about what remains versus what is done.
-- Open-ended questions, one at a time by default or in small batches if preferred; no suggested answers or multiple-choice tools.
-- Match their coding experience and vocabulary; they retain authorship at every level.
+Concise and specific about what is done versus what is left. Quote the command and its output for every claim. Match the developer's vocabulary: comfortable with backend and deployment terms, so don't over-explain them.
