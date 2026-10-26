@@ -1,77 +1,63 @@
 # Verification Report
 
-**Scope:** level-2 (Koya Levels 1–2: reset, list slots, book, look up; API key on every request; booking validation, trim and lower-case; plus the web page's handling of both)
+**Scope:** level-3 (Koya Levels 1–3: reset, slots, book, look up; API key and booking validation; no double booking under simultaneous requests; cancel; plus the web page for all three)
 **Target:** local — API http://localhost:8070 (Docker Compose, 2 gunicorn workers, Postgres), page http://localhost:5180 (Vite dev server + `api/_proxy.js`). No deployed URL yet (deployment is slice 9).
 **Date:** 2026-10-26
 **Blockers:** 0
 **Major:** 1
-**Minor:** 2
+**Minor:** 0
 **Verdict:** PASS
-**Not verified:** deployed URL (doesn't exist yet, slice 9).
+**Not verified:** deployed URL (doesn't exist yet, slice 9; `scripts/concurrency.py` and `scripts/smoke.py` must be re-run against it there).
 
 ## Findings
 
 | # | Severity | Level | Location | Finding | Why it matters | Remediation |
 |---|---|---|---|---|---|---|
-| 1 | major | 2 | `src/core/auth.py` `PUBLIC_PATHS`; `spec.md > Decisions and Open Issues` | The spec departs from `task-1.md` ("Every request needs the X-API-Key header… A missing or wrong key returns 401"): `GET /health`, `/docs`, `/redoc` and `/openapi.json` answer 200 without a key. Counted as major because the skill treats any spec/contract disagreement as major; both exemptions are recorded learner decisions. | A checker that probes one of those exact paths without a key expecting 401 would get 200. Unlikely: the contract's endpoints and unknown routes all return 401 (probe A), and the docs hold no data. `/health` has to stay public for Railway's healthcheck, which can't send headers. | Keep as decided (no change), or protect the docs again and keep only `/health` public. Learner's call; nothing to fix unless that decision changes. |
-| 2 | minor | 2 | `scripts/runner.sh` (gunicorn has no access log) | 401s aren't logged: a request with a wrong key leaves no trace in `docker compose logs api` (0 lines). The key itself is never logged either (0 hits). | Someone guessing keys against the deployed API would go unnoticed (OWASP A09). | **Fixed:** the key middleware logs each 401 (method, path without query, client, missing/wrong) — never the key, query string or body; `test_a_rejected_key_is_logged_without_the_key_or_query`. |
-| 3 | minor | 2 | `scripts/smoke.py` | Missing `slot_id`, empty `name` and missing `email` have tests but no smoke `check` line (smoke covers missing name, empty email, invalid email, non-string slot_id, started, unknown slot). | The live smoke run in slice 9 proves only some of the Level 2 400s on the deployed API. | **Fixed:** smoke now checks missing `slot_id`, empty `name` and missing `email` (28 checks). |
+| 1 | major (carried from level-2, accepted) | 2 | `src/core/auth.py` `PUBLIC_PATHS`; `spec.md > Decisions and Open Issues` | `GET /health`, `/docs`, `/redoc` and `/openapi.json` answer without a key, while `task-1.md` says every request needs one. Both are recorded learner decisions; counted as major only because the skill treats any spec/contract disagreement as major. | A checker probing exactly those paths without a key would get 200 instead of 401. Every contract endpoint and unknown route is 401 without the key. | None unless the decision changes. |
 
-**Known and scheduled, not counted (out of Level 2 scope):** a second booking for a booked slot is still a `500 {"error": "internal server error"}` (the partial unique index blocks it; the 409 mapping is slice 4, Level 3).
+No new findings at Level 3.
 
-**Resolved since the Level 1 report:** finding 2 (reset deletes bookings / keeps past slots now have smoke lines) and finding 3 (skills point at `scripts/smoke.py`).
+**Notes (not findings):**
+- The contract's example body for `DELETE /bookings/{id}` 200 shows `"status": "confirmed"`, but its description says "Sets status to cancelled". The API follows the description and returns `"status": "cancelled"`. It's clearly a copy of the booking example, so this is the right reading.
+- A slot that is both booked and started gets `400 slot has already started` (probe M): the started check runs before the insert. The contract doesn't order the two.
+- In probe L, a cancel raced against 20 rebookings: one rebooking won after the cancel committed, and the rest got 409. Zero winners would also have been correct, if every rebooking had reached the index before the cancel committed. The invariant (at most one confirmed booking) held.
 
 ## Requirement map
 
 | # | Level | Requirement (from task-1.md) | Test that proves it | Live check | Status |
 |---|---|---|---|---|---|
-| 1 | 1 | `POST /reset` → 200 | `test_reset_returns_ok` | smoke | verified |
-| 2 | 1 | Reset deletes every booking | `test_reset_deletes_every_booking` | smoke "POST /reset deletes every booking" | verified |
-| 3 | 1 | Reset keeps slots in the past | `test_reset_keeps_past_slots_and_replaces_everything` | smoke "past slots kept" | verified |
-| 4 | 1 | `GET /slots` earliest first, with `available` | `test_slots_are_listed_earliest_first_with_availability` | smoke; probe G | verified |
-| 5 | 1 | `?provider=` exact match | `test_provider_filter_is_an_exact_match` | smoke | verified |
-| 6 | 1 | `POST /bookings` → 201 confirmed, contract body | `test_booking_a_slot_returns_201_confirmed` | smoke | verified |
-| 7 | 1 | `GET /bookings/{id}` → 200 / 404 `{"error"}` | `test_a_booking_can_be_looked_up_by_id`, `test_an_unknown_booking_id_is_404` | smoke | verified |
-| 8 | 1 | Every error is `{"error"}` (404 route, 405, bad JSON, 500) | `test_unknown_routes_and_methods_keep_the_error_shape`, `assert_error` in every Level 2 test | smoke; probes A, C, E | verified |
-| 9 | 1 | Bookings persist across a restart | — | restart probe → 200 | verified |
-| 10 | 2 | Missing `X-API-Key` → 401 | `test_requests_without_the_right_key_are_401[missing-*]` (5 routes) | smoke; probe A (8 routes, incl. DELETE, wrong method, unknown route) | verified |
-| 11 | 2 | Wrong key → 401 (also empty, longer-than-real) | `test_requests_without_the_right_key_are_401[wrong/empty/longer-*]` | smoke; probe B | verified |
-| 12 | 2 | Key checked before validation | `test_the_key_is_checked_before_anything_else` | probe A (`{bad` body → 401, not 400) | verified |
-| 13 | 2 | A reset without the key changes nothing | `test_a_reset_without_the_key_changes_nothing` | page: wrong key → "Wrong API key." | verified |
-| 14 | 2 | Missing `slot_id` / `name` / `email` → 400 | `test_a_missing_field_is_400[*]` | probe C; smoke (name only — finding 3) | verified |
-| 15 | 2 | Empty (`""`, spaces, `null`) field → 400 | `test_an_empty_field_is_400[*]` (9 cases) | probe C; smoke (email only — finding 3) | verified |
-| 16 | 2 | Non-string field → 400 | `test_a_field_that_is_not_a_string_is_400[*]` (12 cases) | smoke (slot_id) | verified |
-| 17 | 2 | Invalid email → 400 | `test_an_invalid_email_is_400[*]` (5 cases) | smoke; probe C (`ada@@example.com`) | verified |
-| 18 | 2 | Body not a JSON object (bad JSON, empty, array, string, bad UTF-8) → 400 | `test_a_body_that_is_not_a_json_object_is_400[*]` | smoke; probe E | verified |
-| 19 | 2 | Unknown slot → 404 | `test_an_unknown_slot_is_404` | smoke; probe C | verified |
-| 20 | 2 | Slot already started → 400 | `test_a_slot_that_has_started_is_400` | smoke; probe C; page (slot that started while selected) | verified |
-| 21 | 2 | Name and email trimmed, email lower-cased, as stored | `test_name_and_email_are_trimmed_and_email_is_lower_cased` (reads back via GET) | smoke; probe F (tabs/newlines too) | verified |
-| 22 | 2 | A rejected booking creates nothing | `test_a_rejected_booking_creates_nothing` | probe G | verified |
-| 23 | 2 (PRD) | Page: each 400/404 a plain message, inputs kept; slot list refreshes on 404/started; "Wrong API key"; unreachable message | `npm test` (proxy) | headless Chromium run (below); unreachable checked in slice 3 | verified |
-| 24 | 2 (PRD) | The server key never reaches the browser; `/reset` carries only the typed key | `npm test` (5 cases) | no key in `dist/` (slice 3 build) | verified |
+| 1–9 | 1 | reset (200, wipes bookings, keeps past slots), slots (earliest first, `available`, provider exact), book 201, get 200/404, `{"error"}` shape, persistence | `test_level1_slots_bookings.py` (13 tests), reverified by the suite | smoke lines 1–12; restart probe O | verified |
+| 10–22 | 2 | key 401 (missing/wrong/before validation), 400s (missing/empty/non-string/invalid email/bad body), 404 unknown slot, 400 started, trim + lower-case, rejected booking creates nothing | `test_level2_auth_validation.py` (60 cases), reverified by the suite | smoke lines 13–26; probe N (DELETE without key 401) | verified |
+| 23 | 3 | A slot that already has a confirmed booking → 409 | `test_booking_a_booked_slot_is_409` (asserts `{"error": "slot already booked"}` and 1 confirmed row) | smoke "booking an already-booked slot is 409" | verified |
+| 24 | 3 | **409 holds when many requests arrive at the same moment** | `test_fifty_simultaneous_bookings_give_one_201_and_49_409s` (asyncio.gather, 1×201 / 49×409, 409 bodies, 1 confirmed row in Postgres) | `scripts/concurrency.py` PASS; probe H (30 separate curl processes → 1×201, 29×409, 1 row); probe I (two slots at once → one winner each) | verified |
+| 25 | 3 | `DELETE /bookings/{id}` → 200 with the booking, status `cancelled` | `test_cancelling_returns_200_with_the_cancelled_booking` (body equals the booking with status cancelled; GET agrees) | smoke; probe K | verified |
+| 26 | 3 | Cancel frees the slot | `test_a_cancelled_slot_can_be_booked_again` (available true, rebook 201, old stays cancelled, 1 confirmed row) | smoke "available again" + "booked again"; probe O after restart | verified |
+| 27 | 3 | Unknown booking → 404 `{"error"}` | `test_cancelling_an_unknown_booking_is_404[uuid, not-a-uuid]` | smoke | verified |
+| 28 | 3 | Already cancelled → 409 `{"error"}` | `test_cancelling_twice_is_409` | smoke; probe J | verified |
+| 29 | 3 (spec) | Two simultaneous cancels → one 200, one 409 | `test_two_simultaneous_cancels_give_one_200_and_one_409` | probe J (10 parallel → 1×200, 9×409) | verified |
+| 30 | 3 (spec) | After a cancel, simultaneous rebookings still give one winner | `test_after_a_cancel_fifty_simultaneous_rebookings_still_give_one_winner` | probe L | verified |
+| 31 | 3 (PRD) | Page: 409 message + slot refresh; cancel with "are you sure?" (no → nothing changes); row and confirmation show cancelled; slot freed; "already cancelled" message | — | headless Chromium runs (below) | verified |
 
-Note on probe D: a body with both an unknown slot and a bad email gets 400 (validation runs before the slot lookup, `spec.md > API: Bookings` steps 5–6). The contract doesn't order these.
+**Test reality check:** each Level 3 test asserts the status code **and** the body (`{"error": "<exact message>"}` or the full booking), and the race tests also count rows directly in Postgres. In slice 4, the 50-way test failed with the index dropped (`Counter({201: 50})`), so it can detect double booking. The three race tests passed 10/10 consecutive runs in slices 4–5.
 
-## Security pass (OWASP, Levels 1–2)
+## Security pass (OWASP, Levels 1–3)
 
-- **A01 Access control:** every endpoint, wrong method and unknown route is 401 without the key (probe A), checked before routing and validation. Public: `/health` and the docs only (finding 1). The proxy never sends the server key to `/reset`.
-- **A02 Secrets / crypto:** key compared with `hmac.compare_digest`; a key in the query string is ignored (probe B); key never logged (0 hits); 0 hits for the key in either repo's history; only `.env.example` tracked.
-- **A03 Injection:** SQLAlchemy expressions only; React renders all data (no raw HTML).
-- **A05 Misconfiguration:** errors never include stack traces.
-- **A06 Components:** `pip-audit` and `npm audit` clean; lockfiles committed.
-- **A07 Auth:** one 401 message for missing and wrong keys, so it doesn't distinguish them.
-- **A08 Integrity:** wrong types, bad JSON and bad UTF-8 are 400, never 500 (probes C, E).
-- **A09 Logging:** no request bodies logged; 401s not logged (finding 2).
+- **A01:** `DELETE` without a key is 401 (probe N); every endpoint is covered by the middleware.
+- **A02:** 0 hits for the API key in either repo's history; only `.env.example` tracked. The 3 database-URL matches are documentation mentioning the `postgresql://` scheme, with no credentials.
+- **A03:** no string-built SQL. The cancel is a parameterized SQLAlchemy `update()`.
+- **A04 (insecure design, the core of this level):** no check-then-insert anywhere. Double booking is prevented by the partial unique index `uq_bookings_slot_confirmed`, and double cancel by a single conditional `UPDATE … WHERE status = 'confirmed'`. Both are enforced by Postgres, under 2 worker processes.
+- **A06:** `pip-audit` and `npm audit` clean.
+- **A09:** 401s logged without key, query or body (fixed after level-2).
 
 ## Commands run
 
 ```
 $ make tests
-collected 78 items
-============================== 78 passed in 3.37s ==============================
+collected 88 items
+============================== 88 passed in 5.56s ==============================
 $ uv run ruff check && uv run ruff format --check
 All checks passed!
-34 files already formatted
+36 files already formatted
 $ make smoke
 BASE_URL=${BASE_URL:-http://localhost:8070} uv run python scripts/smoke.py
 Smoke test against http://localhost:8070
@@ -92,88 +78,103 @@ OK    no API key is 401 {error}
 OK    wrong API key is 401 {error}
 OK    unknown route without a key is 401
 OK    API docs load without a key
+OK    POST /bookings, missing slot_id: 400
 OK    POST /bookings, missing name: 400
+OK    POST /bookings, empty name: 400
+OK    POST /bookings, missing email: 400
 OK    POST /bookings, empty email: 400
 OK    POST /bookings, invalid email: 400
 OK    POST /bookings, non-string slot_id: 400
 OK    POST /bookings, slot already started: 400
 OK    POST /bookings, malformed JSON: 400
 OK    name trimmed, email trimmed and lower-cased
+OK    booking an already-booked slot is 409
+OK    DELETE /bookings/{id} is 200 cancelled
+OK    cancelling again is 409
+OK    cancelling an unknown booking is 404
+OK    the cancelled booking's slot is available again
+OK    the freed slot can be booked again
 OK    POST /reset deletes every booking
 
 All checks passed
+$ BASE_URL=http://localhost:8070 uv run python scripts/concurrency.py
+50 simultaneous bookings for one slot against http://localhost:8070
+  finished in 0.74s
+  201: 1
+  409: 49
+  winner: 0ab1f391-7a43-47ca-ac5b-4e7f16274ce3 (Racer 0), status confirmed
+  slot 'race' available: False
+PASS: exactly one booking won
 $ (frontend) npm test
-✔ patient requests get the server key, replacing any key the browser sent (139.607866ms)
-✔ reset carries only the typed key, never the server key (18.188969ms)
-✔ body, content type and Idempotency-Key are forwarded; redirects are not followed (2.88988ms)
-✔ status, body and Retry-After come back unchanged (4.772582ms)
-✔ an unreachable API is a 502 in the error shape (2.83012ms)
 ℹ pass 5
 ℹ fail 0
 ```
 
-HTTP probes (`curl`, local API; `post` = `curl -X POST /bookings` with the key):
+Independent HTTP probes (separate `curl` processes via `xargs -P`, local API):
 
 ```
-### A. 401 on every endpoint, before validation/routing (missing key)
-POST /reset              401 {"error":"invalid or missing API key"}
-GET /slots               401 {"error":"invalid or missing API key"}
-POST /bookings           401 {"error":"invalid or missing API key"}
-GET /bookings/x          401 {"error":"invalid or missing API key"}
-DELETE /bookings/x       401 {"error":"invalid or missing API key"}
-GET /bookings?email=a    401 {"error":"invalid or missing API key"}
-PUT /slots               401 {"error":"invalid or missing API key"}
-GET /nope                401 {"error":"invalid or missing API key"}
-### B. key variants
-HTTP/1.1 401 Unauthorized
-{"error":"invalid or missing API key"}
-lowercase header name: 200
-key with surrounding spaces: 200
-key as query param only: 401
-### C. validation rows
-{"error":"slot_id is required"} [400]
-{"error":"name is required"} [400]
-{"error":"email is not valid"} [400]
-{"error":"email is required"} [400]
-{"error":"slot not found"} [404]
-{"error":"slot has already started"} [400]
-### D. order: unknown slot AND bad email -> which wins?
-{"error":"email is not valid"} [400]
-### E. invalid UTF-8 body, text/plain content type
-{"error":"request body is not valid JSON"} [400]
-{"id":"574c1d7b-cd51-449f-8796-e56b3dabf761","slot_id":"s2","name":"Bo","email":"bo@x.io","status":"confirmed","created_at":"2026-10-26T02:08:07.752Z"} [201]
-### F. trim + lowercase stored (GET back)
+### H. 30 separate curl processes in parallel, same slot
+      1 201
+     29 409
+confirmed rows for a: 1
+### I. two slots raced at once (20 each, interleaved)
+      1 a 201
+     19 a 409
+      1 b 201
+     19 b 409
+### J. 10 parallel cancels of one booking
+      1 200 "status":"cancelled"
+      9 409 already cancelled
+### K. DELETE response body vs GET after
 HTTP/1.1 200 OK
-{"id":"3395da63-6e9f-4aaf-b775-b662694159c9","slot_id":"s1","name":"Ada Obi","email":"ada.obi@example.com","status":"confirmed","created_at":"2026-10-26T02:08:07.814Z"}
-### G. rejected bookings created nothing
-{"slots":[{"id":"past","provider":"Dr Ade","start":"2020-01-01T09:00:00Z","end":"2020-01-01T09:30:00Z","available":true},{"id":"s1","provider":"Dr Ade","start":"2030-01-01T09:00:00Z","end":"2030-01-01T09:30:00Z","available":false},{"id":"s2","provider":"Dr Ade","start":"2030-01-02T09:00:00Z","end":"2030-01-02T09:30:00Z","available":false}]}
+{"id":"7d4bad05-7bf4-4f1a-89f4-2fe71918ff7c","slot_id":"a","name":"Ada","email":"ada@example.com","status":"cancelled","created_at":"2026-10-26T02:38:30.122Z"}
+### L. cancel and 20 rebooks fired together (booking already exists)
+      1 book 201
+     19 book 409
+      1 cancel 200
+cancelled: 1
+confirmed: 1
+### M. booked AND started slot (which error wins?)
+{"error":"slot has already started"} [400]
+### N. DELETE without key / wrong method on /bookings/{id}
+{"error":"invalid or missing API key"} [401]
+{"error":"method not allowed"} [405]
+### O. cancelled status persists across restart
+{'past': False, 'a': True, 'b': True}
 ```
 
-(In G, `s1` and `s2` are unavailable because of the successful bookings in probes E and F; `past` stayed available despite the rejected attempt in C.)
+(O: `a` is available again after its booking was cancelled and the API restarted; `past` is unavailable because probe M inserted a confirmed booking for it directly in Postgres.)
 
-Web page, Level 2 (headless Chromium via http://localhost:5180), persistence, security:
+Web page (headless Chromium via http://localhost:5180), security:
 
 ```
-### web page, Level 2 (headless Chromium via localhost:5180)
-ADMIN wrong key   -> Wrong API key.
-ADMIN right key   -> Slots replaced. Every booking was deleted.
-empty name        -> Please enter your name.  | inputs kept: ["","ada@example.com"]
-not-an-email      -> That email doesn't look right. Please check it and try again.  | inputs kept: ["Ada Obi","not-an-email"]
-trim + case       -> booked; Name Ada Obi Email ada@example.com
-PAST slot row     -> Dr Bola | Wed 1 Jan 2020, 10:00–10:30 | Unavailable
-slot started      -> This slot has already started. Please pick another.
-row after refresh -> Dr Soon | Mon 26 Oct 2026, 03:08–03:38 | Unavailable
-### persistence across restart
-{"id":"eed54c8c-acbb-4c23-998a-7e3f3cd7b93f","slot_id":"p1","name":"Ada","email":"ada@example.com","status":"confirmed","created_at":"2026-10-26T02:08:35.761Z"} [200]
-### secrets: key in history / tracked env files
+### web page: 409 (someone books first)
+someone else booked it first: 201
+page still shows it as: Selected
+page message: Someone just booked this slot. Please pick another.
+row after refresh: Unavailable
+### web page: cancel journey
+booked 4210b99f-9d40-4f99-8c41-0394e8b37543 | slot row: Unavailable
+1. press Cancel booking, answer no:
+  dialog: "Are you sure you want to cancel this booking?" -> Cancel
+   status: confirmed | slot row: Unavailable
+2. press Cancel booking, answer yes:
+  dialog: "Are you sure you want to cancel this booking?" -> OK
+   status: cancelled | cancel button still there: false | slot row: Choose
+   Book a Slot confirmation now says: This booking has been cancelled. The slot is free again. | status: cancelled
+3. rebook the freed slot:
+   booked again: 4cd288a1-4818-453b-b7cb-f0945dfacb06 | slot row: Unavailable
+4. cancelled in another tab, then cancel here:
+   other tab DELETE: 200
+  dialog: "Are you sure you want to cancel this booking?" -> OK
+   message: This booking is already cancelled. | status shown: cancelled
+### secrets
 .: key hits=0; tracked env: .env.example 
 ../clinic-booking-frontend: key hits=0; tracked env: .env.example 
-### is the key ever logged?
-0
-### are 401s logged?
-0
+db URLs with real passwords committed: 3   (all three are docs mentioning the postgresql:// scheme; no credentials)
+### raw SQL with string building
+none
 ### pip-audit
-WARNING:pip_audit._cli:Consider using a tool like `pip-compile`: https://pip-tools.readthedocs.io/en/latest/#using-hashes
 No known vulnerabilities found
 ### npm audit
 found 0 vulnerabilities
