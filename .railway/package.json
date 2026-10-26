@@ -1,0 +1,8 @@
+{
+  "name": "clinic-booking-api-railway-iac",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "railway": "3.16.0"
+  }
+}

@@ -12,3 +12,6 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
+
+# Railway IaC dependencies
+.railway/node_modules/
