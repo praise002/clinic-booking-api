@@ -4,9 +4,9 @@ A booking API for a small clinic: list appointment slots, book one, look a booki
 
 | | |
 |---|---|
-| **API** | `<RAILWAY_URL>` |
-| **API docs** | `<RAILWAY_URL>/docs` (no key needed to read them; press **Authorize** and enter the key to try endpoints) |
-| **Web page** | `<VERCEL_URL>` ([`clinic-booking-frontend`](../clinic-booking-frontend)) |
+| **API** | `<API_URL>` (Vercel) |
+| **API docs** | `<API_URL>/docs` (no key needed to read them; press **Authorize** and enter the key to try endpoints) |
+| **Web page** | `<WEB_URL>` ([`clinic-booking-frontend`](../clinic-booking-frontend)) |
 
 Every request except `GET /health` (and the docs) needs the `X-API-Key` header. Every error is `{"error": "<message>"}`.
 
@@ -65,20 +65,23 @@ The local ports avoid ones already taken on the developer's machine; change them
 - `scripts/concurrency.py`: 50 simultaneous bookings for one slot, then 20 simultaneous retries with one `Idempotency-Key`, against any `BASE_URL`.
 - `docs/verification.md`: the latest independent check of every requirement, with the commands' real output.
 
-## Deploy (Railway)
+## Deploy (free: Vercel + Neon + Upstash)
 
-The project is defined as code in [`.railway/railway.ts`](.railway/railway.ts): Postgres, Redis, and the `api` service built from the `Dockerfile`. Migrations run in `preDeploy`, the healthcheck is `/health`, and there are 2 gunicorn workers.
+The API runs on **Vercel** as one Python function (`[tool.vercel] entrypoint = "src.main:app"` in `pyproject.toml`, region `iad1` in `vercel.json`). Postgres is on **Neon** and Redis on **Upstash**, all on free plans in US East. The step-by-step guide, including signing up for each, is [`docs/deploy.md`](docs/deploy.md). In short:
 
 ```bash
-cd .railway && npm install && cd ..
-npx @railway/cli login
-npx @railway/cli init                     # or `link` to an existing project
-npx @railway/cli config plan              # review
-npx @railway/cli config apply
-npx @railway/cli variables --service api --set "API_KEY=<a long random key>"
-npx @railway/cli domain --service api     # the public https URL
-BASE_URL=https://<domain> API_KEY=<key> uv run python scripts/smoke.py
+DATABASE_URL="<neon direct url>" uv run alembic upgrade head   # once
+npx vercel link && npx vercel env add …                       # API_KEY, DATABASE_URL (pooled), REDIS_URL (rediss://)
+npx vercel deploy --prod
+BASE_URL=https://<api> API_KEY=<key> uv run python scripts/smoke.py
 ```
+
+Hosting details the code handles:
+- **Neon URLs** (`?sslmode=require&channel_binding=require`) work as copied: `src/db_options.py` turns them into asyncpg's `ssl` setting.
+- **Neon's pooler** (a `-pooler` host, transaction mode) gets asyncpg's and SQLAlchemy's statement caches turned off, with unique statement names. Tested behind a local PgBouncer with prepared-statement support off: without this, the 50-way race fails with `DuplicatePreparedStatementError`; with it, both races pass.
+- **Idle connections:** `pool_pre_ping` and a 5-minute recycle replace connections Neon dropped while it slept.
+
+The Docker/gunicorn setup (`Dockerfile`, `scripts/runner.sh`, `.railway/railway.ts`) still works for container hosts such as Railway, and is what `docker compose` runs locally.
 
 ## Layout
 
@@ -92,6 +95,7 @@ src/
   idempotency/       claim / replay / 422 for Idempotency-Key
   ratelimit/         the sliding-window Lua script and the per-email limiter
 migrations/          Alembic: 0001 schema (incl. the partial unique index), 0002 json responses
+src/db_options.py    database URL handling for hosts (Neon sslmode, poolers)
 scripts/             runner.sh, smoke.py, concurrency.py
 docs/                scope, PRD, spec, build checklist, verification report
 ```

@@ -101,6 +101,9 @@ make tests                      # pytest against the compose db/redis (test data
 
 ### Deployed (required, `CLAUDE.md`)
 
+> **Changed in slice 9 (learner decision, cost):** the API deploys to **Vercel** (Python function) with **Neon** Postgres and **Upstash** Redis, all free, instead of Railway. Steps: `docs/deploy.md`. The Railway notes below are kept for reference; `.railway/railway.ts` and the `Dockerfile` still describe a working container deployment.
+
+
 - **API on Railway:** project `clinic-booking-api`, defined as code in `.railway/railway.ts` (`railway/iac`, the same pattern as `supportiq-ai-backend`):
   - `postgres("Postgres")` and `redis("Redis")` plugins.
   - One `api` service, `builder: "DOCKERFILE"`, `preDeploy: "alembic upgrade head"`, `healthcheck: "/health"`, restart `ON_FAILURE`.
@@ -447,6 +450,8 @@ koya-assessment/
 - `/reset` also clears the **rate-limit keys** and idempotency records, confirmed at review.
 
 - **The API docs load without the key** (`/docs`, `/redoc`, `/openapi.json`), alongside `/health`; every endpoint, and any unknown route, still needs it (learner decision in slice 3, after trying the strict version). The OpenAPI schema declares the `X-API-Key` scheme, so Swagger's **Authorize** box takes the key for trying endpoints, and documents a 401 on every endpoint but `/health`.
+
+- **Hosting moved to Vercel + Neon + Upstash** (slice 9): Railway's Hobby plan (~$5/month) wasn't affordable, and Render's free tier sleeps for ~1 minute and deletes free Postgres after 30 days. All three new services are free, and the guarantees are unchanged because they live in Postgres and Redis.
 
 **Implementation details derived from those choices (agent defaults, change freely):**
 - 429 and 401 are never stored as idempotent responses.

@@ -91,7 +91,7 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   Learner check: On the page, try booking six times quickly with the same email (bad details are fine; they count). The sixth says how many seconds to wait. Then book with a different email straight away and it works.
   Commit: `Add Level 5: per-email rate limiting with Redis` (API repo), `Show rate-limit wait time` (frontend repo); then `verify level-5`
 
-- [ ] **9. Live: the API on Railway and the page on Vercel, proven at their https URLs**
+- [ ] **9. Live: the API and the page on Vercel (Postgres on Neon, Redis on Upstash), proven at their https URLs**
   Becomes usable: The API at a Railway https URL, backed by Railway Postgres and Redis. The page at a Vercel https URL, calling the API through the key-adding function. Smoke and the 50-way concurrency proof pass against the live API, and bookings survive a redeploy. The README lists both URLs and explains how each guarantee works.
   Why now: Deployment is last, by the learner's choice. Everything it ships has already passed all five levels locally. Expect to resolve the deploy unknowns here (`spec.md > Decisions and Open Issues`, "To verify"): the `railway/iac` version, the `DATABASE_URL` scheme rewrite and asyncpg SSL, preDeploy migrations, the plan's resource limits, and whether Vercel's catch-all matches nested paths.
   PRD ref: `prd.md > API Contract` (survives a restart, smoke against the live URL), `prd.md > What We're Building`, `prd.md > States and Boundaries` (Permissions)
@@ -136,5 +136,6 @@ Activity mode: [live app and editor, explicit static fallback, focused alternati
 - Local Redis is on host port 6396 (6379/6380/6390 are taken); tests use Redis database 15, flushed between tests. Tests outside Level 5 lift the limit through an autouse fixture (`real_rate_limit` marker keeps it), because paging/idempotency tests book many times for one email.
 - The Redis client has 0.5 s connect/read timeouts — a hung (not just refused) Redis was found to hold bookings on default timeouts; with the cap, fail-open takes ~0.5 s.
 - `scripts/smoke.py` books each validation check as its own email: under the real limit, its old reuse of one email hit 429 on the 6th check.
+- Slice 9 hosting changed from Railway to **Vercel (API) + Neon (Postgres) + Upstash (Redis)**, all free — the learner couldn't afford Railway Hobby (~$5/month) and Render's free tier asked for a card, sleeps (~1 min wake) and deletes free Postgres after 30 days. Code added: `src/db_options.py` (Neon `sslmode`, pooler-safe asyncpg settings, proven behind a local PgBouncer: without it the 50-way race hit `DuplicatePreparedStatementError`), `pool_pre_ping`/`pool_recycle`, `REDIS_TIMEOUT_SECONDS`, `[tool.vercel]` entrypoint, `vercel.json`, `.vercelignore`. `docs/deploy.md` is the step-by-step guide.
 - The booking form sets `noValidate`, so every validation message comes from the API (one source of truth) rather than the browser's own email bubble.
 
