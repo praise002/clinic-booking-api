@@ -229,6 +229,24 @@ def main() -> int:
     r = client.post("/bookings", json={**good_booking, "email": "rebook@example.com"})
     check("the freed slot can be booked again", r.status_code == 201, r.text)
 
+    # ── Level 4: idempotent retries ─────────────────────────────────────────
+    key = {"Idempotency-Key": f"smoke-{datetime.now(UTC).timestamp()}"}
+    retry_body = {"slot_id": "smoke-2", "name": "Retry Test", "email": "retry@example.com"}
+    client.delete(f"/bookings/{trimmed.get('id')}")  # free smoke-2 (booked by the trim check)
+    first = client.post("/bookings", json=retry_body, headers=key)
+    again = client.post("/bookings", json=retry_body, headers=key)
+    check(
+        "same Idempotency-Key + body: same status and booking id",
+        first.status_code == again.status_code == 201 and first.json() == again.json(),
+        f"{first.text} / {again.text}",
+    )
+    r = client.post("/bookings", json={**retry_body, "name": "Someone Else"}, headers=key)
+    check(
+        "same Idempotency-Key, different body: 422",
+        is_error(r, 422, "Idempotency-Key reused with a different body"),
+        r.text,
+    )
+
     # ── Reset wipes bookings (last: it empties the target) ───────────────────
     r = client.post("/reset", json={"slots": slots})
     r = client.get(f"/bookings/{booking.get('id')}")

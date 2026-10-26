@@ -61,7 +61,7 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   Learner check: On the page, book a slot, find it by id, press Cancel and say no (nothing changes), then Cancel and yes. The row says cancelled and the slot is bookable again. Book it again to close the loop.
   Commit: `Add Level 3: cancel bookings` (API repo), `Add cancel to Find a Booking` (frontend repo); then `verify level-3`
 
-- [ ] **6. Level 4: a retried booking never creates a duplicate**
+- [x] **6. Level 4: a retried booking never creates a duplicate**
   Becomes usable: `POST /bookings` with an `Idempotency-Key` header: repeating the same key and body returns the same status and the same booking id, and creates no second booking, even when the repeats arrive concurrently. The same key with a different body → `422 {"error": ...}`. Key order and whitespace in the body don't count as "different".
   Why now: The first half of Level 4. It touches the booking pipeline and transaction boundaries that slices 3–4 just settled, so it goes before paging, which is a read-only path.
   PRD ref: `prd.md > API Contract` (Idempotency)

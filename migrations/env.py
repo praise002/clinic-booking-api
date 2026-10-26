@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from src.bookings.models import Booking  # noqa: F401  (registers the table on Base.metadata)
 from src.config import settings
 from src.database import Base
+from src.idempotency.models import IdempotencyKey  # noqa: F401
 from src.slots.models import Slot  # noqa: F401
 
 # this is the Alembic Config object, which provides

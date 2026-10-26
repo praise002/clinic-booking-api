@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bookings.enums import BookingStatus
 from src.bookings.models import Booking
+from src.idempotency.models import IdempotencyKey
 from src.slots.models import Slot
 from src.slots.schemas import SlotIn
 
@@ -12,7 +13,9 @@ class SlotRepository:
         self.session = session
 
     async def replace_all(self, slots: list[SlotIn]) -> None:
-        """Delete every booking and slot, then insert the new slots. Caller commits."""
+        """Delete every idempotency record, booking and slot, then insert the new slots.
+        Caller commits."""
+        await self.session.execute(delete(IdempotencyKey))
         await self.session.execute(delete(Booking))
         await self.session.execute(delete(Slot))
         self.session.add_all(

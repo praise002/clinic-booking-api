@@ -1,6 +1,7 @@
 import json
 
-from fastapi import APIRouter, Depends, Path, Request, status
+from fastapi import APIRouter, Depends, Header, Path, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bookings.exceptions import InvalidBookingBody
@@ -9,6 +10,8 @@ from src.bookings.service import BookingService
 from src.core.exceptions import BadRequest
 from src.core.schemas import INTERNAL_ERROR_DOC, error_doc
 from src.database import get_session
+from src.idempotency.constants import MAX_KEY_LENGTH
+from src.idempotency.pipes import parse_key
 
 router = APIRouter(tags=["bookings"])
 
@@ -24,7 +27,11 @@ BOOKING_NOT_FOUND_DOC = error_doc(
     summary="Book a slot",
     description=(
         "Creates a confirmed booking for the slot. `name` is stored trimmed and `email` "
-        "trimmed and lower case. `slot_id` must name an existing slot that hasn't started."
+        "trimmed and lower case. `slot_id` must name an existing slot that hasn't started.\n\n"
+        "**Retries:** send an `Idempotency-Key`. Repeating it with the same body returns the "
+        "first response again (same status, same booking id) and never books twice, even "
+        "if the repeats arrive at the same moment. Final outcomes are replayed: 201, 400, "
+        "404 and 409. Keys are kept until the next `POST /reset`."
     ),
     openapi_extra={
         "requestBody": {
@@ -43,6 +50,7 @@ BOOKING_NOT_FOUND_DOC = error_doc(
             "slot has already started",
             "request body is not valid JSON",
             "request body must be a JSON object",
+            f"Idempotency-Key must be at most {MAX_KEY_LENGTH} characters",
         ),
         404: error_doc("The slot doesn't exist.", "slot not found"),
         409: error_doc(
@@ -50,19 +58,37 @@ BOOKING_NOT_FOUND_DOC = error_doc(
             "Postgres allows one confirmed booking per slot, so exactly one of them wins.",
             "slot already booked",
         ),
+        422: error_doc(
+            "The `Idempotency-Key` was already used with a different body.",
+            "Idempotency-Key reused with a different body",
+        ),
         500: INTERNAL_ERROR_DOC,
     },
 )
-async def create_booking(request: Request, session: AsyncSession = Depends(get_session)):
+async def create_booking(
+    request: Request,
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="Idempotency-Key",
+        description=(
+            f"Optional, at most {MAX_KEY_LENGTH} characters. Makes retries safe: the same key "
+            "with the same body returns the first response again. Blank counts as absent."
+        ),
+        examples=["9f1c6c1e-booking-attempt-1"],
+    ),
+    session: AsyncSession = Depends(get_session),
+):
+    key = parse_key(idempotency_key)
     # The body is parsed by hand, not by a pydantic model: validation failures must be 400
-    # with a contract message, and idempotency (Level 4) hashes the parsed body as sent.
+    # with a contract message, and idempotency hashes the parsed body as sent.
     try:
         body = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError):
         raise BadRequest("request body is not valid JSON") from None
     if not isinstance(body, dict):
         raise InvalidBookingBody()
-    return await BookingService(session).create(body)
+    outcome = await BookingService(session).create(body, key)
+    return JSONResponse(status_code=outcome.status_code, content=outcome.body)
 
 
 @router.get(

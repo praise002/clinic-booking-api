@@ -5,7 +5,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from src.core.exceptions import AppError, BadRequest, Conflict, NotFound
+from src.core.exceptions import (
+    AppError,
+    BadRequest,
+    Conflict,
+    NotFound,
+    UnprocessableEntity,
+)
 
 log = logging.getLogger(__name__)
 
@@ -14,6 +20,7 @@ STATUS_BY_ERROR: list[tuple[type[AppError], int]] = [
     (NotFound, status.HTTP_404_NOT_FOUND),
     (BadRequest, status.HTTP_400_BAD_REQUEST),
     (Conflict, status.HTTP_409_CONFLICT),
+    (UnprocessableEntity, status.HTTP_422_UNPROCESSABLE_CONTENT),
 ]
 
 
@@ -28,11 +35,15 @@ def register_global_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(Exception, internal_error_handler)
 
 
-async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
+def status_for(exc: AppError) -> int:
     for error_class, status_code in STATUS_BY_ERROR:
         if isinstance(exc, error_class):
-            return error_response(status_code, exc.message)
-    return error_response(status.HTTP_500_INTERNAL_SERVER_ERROR, exc.message)
+            return status_code
+    return status.HTTP_500_INTERNAL_SERVER_ERROR
+
+
+async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
+    return error_response(status_for(exc), exc.message)
 
 
 async def validation_error_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
