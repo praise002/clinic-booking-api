@@ -169,7 +169,14 @@ def main() -> int:
     check("API docs load without a key", r.status_code == 200, r.status_code)
 
     for name, body, message in [
+        (
+            "missing slot_id",
+            {"name": "Ada Obi", "email": "ada@example.com"},
+            "slot_id is required",
+        ),
         ("missing name", {"slot_id": "smoke-2", "email": "ada@example.com"}, "name is required"),
+        ("empty name", {**good_booking, "name": ""}, "name is required"),
+        ("missing email", {"slot_id": "smoke-2", "name": "Ada Obi"}, "email is required"),
         ("empty email", {**good_booking, "email": "   "}, "email is required"),
         ("invalid email", {**good_booking, "email": "not-an-email"}, "email is not valid"),
         ("non-string slot_id", {**good_booking, "slot_id": 2}, "slot_id must be a string"),

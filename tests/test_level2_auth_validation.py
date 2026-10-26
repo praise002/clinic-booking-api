@@ -61,6 +61,20 @@ async def test_requests_without_the_right_key_are_401(
     assert_error(response, 401, "invalid or missing API key")
 
 
+async def test_a_rejected_key_is_logged_without_the_key_or_query(
+    anon_client: AsyncClient, caplog: pytest.LogCaptureFixture
+):
+    with caplog.at_level("WARNING", logger="src.core.auth"):
+        await anon_client.get("/slots?provider=secret-query", headers={"X-API-Key": "guess-123"})
+        await anon_client.get("/slots")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert len(messages) == 2
+    assert messages[0].startswith("401 GET /slots from ") and messages[0].endswith("(wrong key)")
+    assert messages[1].endswith("(missing key)")
+    assert not any("guess-123" in m or "secret-query" in m for m in messages)
+
+
 async def test_health_needs_no_key(anon_client: AsyncClient):
     response = await anon_client.get("/health")
 

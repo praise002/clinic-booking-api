@@ -1,9 +1,12 @@
 import hmac
+import logging
 
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from src.config import settings
+
+log = logging.getLogger(__name__)
 
 # Routes that work without the key: the host's healthcheck, and the API docs (they hold no
 # data; trying an endpoint from them needs the key, entered through Swagger's Authorize box).
@@ -32,6 +35,15 @@ class ApiKeyMiddleware:
         sent = dict(scope["headers"]).get(b"x-api-key", b"")
         # Constant-time compare: response timing doesn't reveal how much of a guess matched.
         if not sent or not hmac.compare_digest(sent, self.expected):
+            # Enough to notice key guessing: never the key, the query string or the body.
+            client = scope.get("client") or ("unknown", 0)
+            log.warning(
+                "401 %s %s from %s (%s key)",
+                scope["method"],
+                scope["path"],
+                client[0],
+                "wrong" if sent else "missing",
+            )
             response = JSONResponse(status_code=401, content={"error": UNAUTHORIZED_MESSAGE})
             await response(scope, receive, send)
             return
