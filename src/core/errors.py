@@ -10,6 +10,7 @@ from src.core.exceptions import (
     BadRequest,
     Conflict,
     NotFound,
+    TooManyRequests,
     UnprocessableEntity,
 )
 
@@ -21,11 +22,14 @@ STATUS_BY_ERROR: list[tuple[type[AppError], int]] = [
     (BadRequest, status.HTTP_400_BAD_REQUEST),
     (Conflict, status.HTTP_409_CONFLICT),
     (UnprocessableEntity, status.HTTP_422_UNPROCESSABLE_CONTENT),
+    (TooManyRequests, status.HTTP_429_TOO_MANY_REQUESTS),
 ]
 
 
-def error_response(status_code: int, message: str) -> JSONResponse:
-    return JSONResponse(status_code=status_code, content={"error": message})
+def error_response(
+    status_code: int, message: str, headers: dict[str, str] | None = None
+) -> JSONResponse:
+    return JSONResponse(status_code=status_code, content={"error": message}, headers=headers)
 
 
 def register_global_error_handlers(app: FastAPI) -> None:
@@ -43,7 +47,10 @@ def status_for(exc: AppError) -> int:
 
 
 async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
-    return error_response(status_for(exc), exc.message)
+    headers = None
+    if isinstance(exc, TooManyRequests):
+        headers = {"Retry-After": str(exc.retry_after)}
+    return error_response(status_for(exc), exc.message, headers)
 
 
 async def validation_error_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:

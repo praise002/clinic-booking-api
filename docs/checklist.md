@@ -81,7 +81,7 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   Learner check: On the page, book three or more slots with one email, typing it in mixed case each time. Open My Bookings and see them oldest first. Cancel one and see it greyed. If you have more than 10, use Next page. Try an email with no bookings.
   Commit: `Add Level 4: list bookings by email with cursor paging` (API repo), `Add My Bookings section` (frontend repo); then `verify level-4`
 
-- [ ] **8. Level 5: no one can spam bookings**
+- [x] **8. Level 5: no one can spam bookings**
   Becomes usable: A 6th `POST /bookings` attempt for one email within a rolling 60 seconds (failed attempts included) returns `429 {"error": ...}` with an integer `Retry-After` in 1–60. Other emails are unaffected, keyed replays aren't counted, `/reset` clears the limits, and if Redis is down the API fails open. On the page, a 429 shows how many seconds to wait.
   Why now: Level 5, the last level. Redis enters the stack only here, so the earlier levels never depended on it.
   PRD ref: `prd.md > API Contract` (Rate limit), `prd.md > Booking Errors` (429)
@@ -133,5 +133,8 @@ Activity mode: [live app and editor, explicit static fallback, focused alternati
 - A cancel anywhere on the page also updates the Book a Slot confirmation to "cancelled" (learner request in slice 5); the app shell passes the last cancelled booking down. A cancel's "already cancelled" notice lives in the owning section, not the button, which disappears with the confirmed status (bug found in the slice 5 browser run).
 - My Bookings uses compact one-line rows (time · provider, id + Copy, status, Cancel) instead of the full booking card — learner choice in slice 7, after seeing 10 cards make a ~3000px page; matches the PRD's "rows".
 - `GET /bookings` takes `email`, `limit` and `cursor` as plain strings checked in `bookings/pipes.py`, so every bad value is a 400 with the contract message rather than FastAPI's wording; the docs still describe `limit` as an integer 1–50.
+- Local Redis is on host port 6396 (6379/6380/6390 are taken); tests use Redis database 15, flushed between tests. Tests outside Level 5 lift the limit through an autouse fixture (`real_rate_limit` marker keeps it), because paging/idempotency tests book many times for one email.
+- The Redis client has 0.5 s connect/read timeouts — a hung (not just refused) Redis was found to hold bookings on default timeouts; with the cap, fail-open takes ~0.5 s.
+- `scripts/smoke.py` books each validation check as its own email: under the real limit, its old reuse of one email hit 429 on the 6th check.
 - The booking form sets `noValidate`, so every validation message comes from the API (one source of truth) rather than the browser's own email bubble.
 

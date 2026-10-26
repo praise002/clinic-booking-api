@@ -32,7 +32,10 @@ BOOKING_NOT_FOUND_DOC = error_doc(
         "**Retries:** send an `Idempotency-Key`. Repeating it with the same body returns the "
         "first response again (same status, same booking id) and never books twice, even "
         "if the repeats arrive at the same moment. Final outcomes are replayed: 201, 400, "
-        "404 and 409. Keys are kept until the next `POST /reset`."
+        "404 and 409. Keys are kept until the next `POST /reset`.\n\n"
+        "**Rate limit:** at most 5 attempts per email (trimmed, lower case) in any 60 "
+        "seconds, failed attempts included; the 6th gets 429 with `Retry-After`. Replays "
+        "of an `Idempotency-Key` don't count and are never refused."
     ),
     openapi_extra={
         "requestBody": {
@@ -63,6 +66,19 @@ BOOKING_NOT_FOUND_DOC = error_doc(
             "The `Idempotency-Key` was already used with a different body.",
             "Idempotency-Key reused with a different body",
         ),
+        429: {
+            **error_doc(
+                "More than 5 booking attempts for this email in the last 60 seconds. Other "
+                "emails aren't affected.",
+                "too many booking attempts, try again later",
+            ),
+            "headers": {
+                "Retry-After": {
+                    "description": "Whole seconds until the next attempt is allowed (1–60).",
+                    "schema": {"type": "integer", "minimum": 1, "maximum": 60},
+                }
+            },
+        },
         500: INTERNAL_ERROR_DOC,
     },
 )

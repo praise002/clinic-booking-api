@@ -168,21 +168,34 @@ def main() -> int:
     r = anon.get("/docs")
     check("API docs load without a key", r.status_code == 200, r.status_code)
 
+    # Each check books as its own email: the Level 5 limit allows 5 attempts per email a minute.
     for name, body, message in [
         (
             "missing slot_id",
-            {"name": "Ada Obi", "email": "ada@example.com"},
+            {"name": "Ada Obi", "email": "check1@example.com"},
             "slot_id is required",
         ),
-        ("missing name", {"slot_id": "smoke-2", "email": "ada@example.com"}, "name is required"),
-        ("empty name", {**good_booking, "name": ""}, "name is required"),
+        (
+            "missing name",
+            {"slot_id": "smoke-2", "email": "check2@example.com"},
+            "name is required",
+        ),
+        (
+            "empty name",
+            {**good_booking, "name": "", "email": "check3@example.com"},
+            "name is required",
+        ),
         ("missing email", {"slot_id": "smoke-2", "name": "Ada Obi"}, "email is required"),
         ("empty email", {**good_booking, "email": "   "}, "email is required"),
         ("invalid email", {**good_booking, "email": "not-an-email"}, "email is not valid"),
-        ("non-string slot_id", {**good_booking, "slot_id": 2}, "slot_id must be a string"),
+        (
+            "non-string slot_id",
+            {**good_booking, "slot_id": 2, "email": "check4@example.com"},
+            "slot_id must be a string",
+        ),
         (
             "slot already started",
-            {**good_booking, "slot_id": "smoke-past"},
+            {**good_booking, "slot_id": "smoke-past", "email": "check5@example.com"},
             "slot has already started",
         ),
     ]:
@@ -196,12 +209,12 @@ def main() -> int:
 
     r = client.post(
         "/bookings",
-        json={"slot_id": "smoke-2", "name": "  Ada Obi  ", "email": "  Ada@Example.COM "},
+        json={"slot_id": "smoke-2", "name": "  Ada Obi  ", "email": "  Trim.Check@Example.COM "},
     )
     trimmed = r.json() if r.status_code == 201 else {}
     check(
         "name trimmed, email trimmed and lower-cased",
-        (trimmed.get("name"), trimmed.get("email")) == ("Ada Obi", "ada@example.com"),
+        (trimmed.get("name"), trimmed.get("email")) == ("Ada Obi", "trim.check@example.com"),
         r.text,
     )
 
@@ -293,6 +306,27 @@ def main() -> int:
     check("GET /bookings without email: 400", is_error(r, 400), r.text)
     r = client.get("/bookings", params={"email": "pager@example.com", "cursor": "nonsense"})
     check("GET /bookings with a bad cursor: 400", is_error(r, 400), r.text)
+
+    # ── Level 5: rate limit (the paging section's reset cleared earlier counts) ──
+    spammer = {"slot_id": "missing-slot", "name": "Spam", "email": "spammer@example.com"}
+    statuses = [client.post("/bookings", json=spammer).status_code for _ in range(5)]
+    check(
+        "5 failed attempts for one email are all answered (404)", statuses == [404] * 5, statuses
+    )
+    r = client.post("/bookings", json={**spammer, "email": "  SPAMMER@example.com "})
+    retry_after = r.headers.get("Retry-After", "")
+    check(
+        "the 6th attempt is 429 with a whole-seconds Retry-After",
+        is_error(r, 429, "too many booking attempts, try again later")
+        and retry_after.isdigit()
+        and 1 <= int(retry_after) <= 60,
+        f"{r.status_code} Retry-After={retry_after!r} {r.text}",
+    )
+    r = client.post("/bookings", json={**spammer, "email": "not.a.spammer@example.com"})
+    check("another email in the same minute is unaffected", is_error(r, 404), r.text)
+    client.post("/reset", json={"slots": page_slots})
+    r = client.post("/bookings", json={**spammer, "slot_id": "smoke-page-0"})
+    check("POST /reset clears the rate limit", r.status_code == 201, r.text)
 
     print(f"\n{'All checks passed' if not failures else f'{failures} check(s) failed'}")
     return 1 if failures else 0

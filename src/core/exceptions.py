@@ -29,3 +29,13 @@ class UnprocessableEntity(AppError):
     different body. Bad input is a 400 (see core/errors.py)."""
 
     message = "unprocessable entity"
+
+
+class TooManyRequests(AppError):
+    """429, with how many whole seconds to wait (sent as Retry-After)."""
+
+    message = "too many booking attempts, try again later"
+
+    def __init__(self, retry_after: int, message: str = ""):
+        super().__init__(message)
+        self.retry_after = retry_after

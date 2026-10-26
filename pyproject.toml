@@ -9,6 +9,7 @@ dependencies = [
     "email-validator>=2.3.0",
     "fastapi>=0.162.0",
     "pydantic-settings>=2.16.1",
+    "redis>=8.1.0",
     "sqlalchemy[asyncio]>=2.1.6",
     "uvicorn>=0.54.0",
 ]
@@ -51,3 +52,4 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+markers = ["real_rate_limit: run with the real 5-attempts-per-minute booking limit"]

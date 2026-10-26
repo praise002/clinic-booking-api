@@ -15,7 +15,8 @@ router = APIRouter(tags=["slots"])
     summary="Replace all slots",
     description=(
         "Deletes every booking and replaces all slots with the ones sent, including slots "
-        "in the past. Also forgets every `Idempotency-Key`. Runs in one transaction: a "
+        "in the past. Also forgets every `Idempotency-Key` and every email's rate-limit count. "
+        "Runs in one transaction: a "
         "rejected request changes nothing."
     ),
     responses={

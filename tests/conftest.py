@@ -15,6 +15,9 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or dotenv_values(".env")
     "TEST_DATABASE_URL", "postgresql+asyncpg://clinic:clinic@localhost:5452/clinic_test"
 )
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL") or dotenv_values(".env").get(
+    "TEST_REDIS_URL", "redis://localhost:6396/15"
+)
 # A fixed key, so tests never depend on (or leak) the developer's real one.
 API_KEY = "test-api-key"
 os.environ["API_KEY"] = API_KEY
@@ -28,6 +31,8 @@ from sqlalchemy import text
 
 from src.database import engine
 from src.main import app
+from src.ratelimit import constants as ratelimit_constants
+from src.redis_client import redis_client
 
 
 async def _create_test_database() -> None:
@@ -58,7 +63,16 @@ def test_database() -> None:
 async def clean_tables(test_database) -> AsyncGenerator[None]:
     async with engine.begin() as conn:
         await conn.execute(text("TRUNCATE idempotency_keys, bookings, slots CASCADE"))
+    await redis_client.flushdb()
     yield
+
+
+@pytest.fixture(autouse=True)
+def rate_limit(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only Level 5 tests (marked `real_rate_limit`) run with the real 5-per-minute limit;
+    elsewhere one email books many times in a row (paging, idempotency, concurrency)."""
+    if request.node.get_closest_marker("real_rate_limit") is None:
+        monkeypatch.setattr(ratelimit_constants, "LIMIT", 10_000)
 
 
 @pytest.fixture

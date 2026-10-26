@@ -19,11 +19,12 @@ from src.bookings.schemas import BookingListResponse, BookingResponse
 from src.core.errors import status_for
 from src.core.exceptions import BadRequest, Conflict, NotFound
 from src.idempotency.service import IdempotencyService, StoredResponse
+from src.ratelimit import service as ratelimit
 from src.slots.exceptions import SlotNotFound
 from src.slots.repository import SlotRepository
 
 # Outcomes that are final for a request, so an Idempotency-Key replays them. Anything else
-# (401, a 500) rolls back, and the key stays free for a real retry.
+# (401, 429, a 500) rolls back, and the key stays free for a real retry.
 FINAL_ERRORS = (BadRequest, NotFound, Conflict)
 
 
@@ -37,11 +38,15 @@ class BookingService:
     async def create(self, body: dict[str, Any], idempotency_key: str | None) -> StoredResponse:
         """POST /bookings. Returns the status and body to send.
 
+        Order: idempotency (a replay ends here, uncounted and never blocked), then the rate
+        limit (every real attempt counts, 429 stops it), then validation and the booking.
+
         Without a key, errors are raised as usual. With one, the key is claimed first, and
         the outcome (201 or a final error) is stored on it in the same transaction as the
         booking: both commit together, or neither does.
         """
         if idempotency_key is None:
+            await self._count_attempt(body)
             booking = await self._book(body)
             await self.session.commit()
             return StoredResponse(201, _booking_body(booking))
@@ -51,6 +56,8 @@ class BookingService:
             await self.session.rollback()
             return replay
 
+        # A 429 here propagates: the transaction rolls back and the key is never stored.
+        await self._count_attempt(body)
         try:
             booking = await self._book(body)
             outcome = StoredResponse(201, _booking_body(booking))
@@ -59,6 +66,12 @@ class BookingService:
         await self.idempotency.store(idempotency_key, outcome)
         await self.session.commit()
         return outcome
+
+    async def _count_attempt(self, body: dict[str, Any]) -> None:
+        """Level 5: count this attempt against its email (raises TooManyRequests)."""
+        email = ratelimit.normalise_email(body.get("email"))
+        if email is not None:
+            await ratelimit.check_and_record(email)
 
     async def _book(self, body: dict[str, Any]) -> Booking:
         """Validate, check the slot, insert. Doesn't commit."""
