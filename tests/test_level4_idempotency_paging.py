@@ -65,6 +65,18 @@ async def test_a_retry_with_the_same_key_and_body_replays_the_same_booking(
     assert await booking_rows() == 1
 
 
+async def test_a_replay_is_byte_for_byte_the_first_response(client: AsyncClient, slots):
+    # Not just equal JSON: the same text, key order included, for 201s and errors alike.
+    for body in (BOOKING, {**BOOKING, "slot_id": "nope"}):
+        key = keyed(f"bytes-{body['slot_id']}")
+        first = await client.post("/bookings", json=body, headers=key)
+        retry = await client.post("/bookings", json=body, headers=key)
+
+        assert retry.status_code == first.status_code
+        assert retry.content == first.content
+        assert retry.headers["content-type"] == first.headers["content-type"]
+
+
 async def test_the_same_json_written_differently_is_the_same_body(client: AsyncClient, slots):
     first = await client.post("/bookings", json=BOOKING, headers=keyed("k-1"))
     reordered = json.dumps(

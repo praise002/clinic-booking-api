@@ -296,7 +296,7 @@ CREATE TABLE idempotency_keys (
   key          text PRIMARY KEY,
   body_hash    text NOT NULL,
   status_code  int,
-  response     jsonb,
+  response     json,                     -- json, not jsonb: keeps key order (0002)
   created_at   timestamptz NOT NULL DEFAULT now()
 );
 ```
