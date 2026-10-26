@@ -21,14 +21,14 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   Learner check: Run `docker compose up --build`. Reset with the `task-1.md` example slot, book `s1` with curl, copy the `id` from the 201, then fetch `/bookings/<id>`: you should see the same booking with `status: "confirmed"` and `created_at` ending in `Z`. `GET /slots` should now show `s1` with `available: false`.
   Commit: `Add Level 1 API: reset, slots, book, get booking`
 
-- [ ] **2. Level 1 web page: see slots, book one, see the confirmation, find it by id**
-  Becomes usable: A local page (`npm run dev`, http://localhost:5173) where a patient sees every slot (readable times, provider filter, unavailable slots greyed), picks one, books it with name and email, gets a confirmation that leads with the booking id (with Copy), and can look the booking up by id. An Admin section resets slots with a typed key. Calls go to `/api/*`, which the Vite dev proxy forwards to the local API with the key added. The Vercel proxy function is written now too, but only deployed in slice 9.
+- [x] **2. Level 1 web page: see slots, book one, see the confirmation, find it by id**
+  Becomes usable: A local page (`npm run dev`, http://localhost:5180) where a patient sees every slot (readable times, provider filter, unavailable slots greyed), picks one, books it with name and email, gets a confirmation that leads with the booking id (with Copy), and can look the booking up by id. An Admin section resets slots with a typed key. Calls go to `/api/*`, which the Vite dev proxy forwards to the local API with the key added. The Vercel proxy function is written now too, but only deployed in slice 9.
   Why now: Completes Level 1 as `task-1.md` defines it ("plus a simple web page… see available slots, book one, and see the confirmation"). This is the early hands-on checkpoint, where your reaction to the look and flow can still shape the remaining sections.
   PRD ref: `prd.md > The Core Journey` (steps 1–4), `prd.md > Screens and Layout`, `prd.md > Look and Feel`, `prd.md > Slots`, `prd.md > Book a Slot`, `prd.md > Find a Booking`, `prd.md > Admin Reset`, `prd.md > States and Boundaries`
   Spec ref: `spec.md > Look and Feel`, `spec.md > Components` (Proxy: Vercel function, Web: API client, App shell, Slots section, Book a Slot, Find a Booking, Admin Reset), `spec.md > Where It Runs and How Someone Tries It` (Local, Frontend), `spec.md > File Structure` (`clinic-booking-frontend/`)
   Build: In `clinic-booking-frontend` (git init): Vite + React (JS), `styles.css` tokens, `vite.config.js` dev proxy with the key from `.env.local` (reset forwards the typed key, everything else gets the server key), `api/[...path].js` with the same rules plus 502 when unreachable, `api.js`, `format.js`, `messages.js`, App shell, SlotsSection, BookingForm (success path, disabled while in flight, generic failure message), FindBooking (no Cancel yet), BookingRow, AdminReset.
-  Verify (mechanical): `npm run build` succeeds, and the built assets contain no API key (grep `dist/`). With the API and dev server running, curl `localhost:5173/api/slots`, `POST /api/bookings` and `/api/bookings/<id>` (the nested path), and confirm they return the API's bodies. Load the page with curl or a headless browser to confirm it renders.
-  Learner check: Open http://localhost:5173. Reset slots from Admin with your key, pick an available slot, book it, and see the confirmation with the id first. The slot should turn grey. Paste the id into Find a Booking and see the same booking. Tell me what you notice about the look and flow, and what you'd change.
+  Verify (mechanical): `npm run build` succeeds, and the built assets contain no API key (grep `dist/`). With the API and dev server running, curl `localhost:5180/api/slots`, `POST /api/bookings` and `/api/bookings/<id>` (the nested path), and confirm they return the API's bodies. Load the page with curl or a headless browser to confirm it renders.
+  Learner check: Open http://localhost:5180. Reset slots from Admin with your key, pick an available slot, book it, and see the confirmation with the id first. The slot should turn grey. Paste the id into Find a Booking and see the same booking. Tell me what you notice about the look and flow, and what you'd change.
   Commit: `Add Level 1 web page and key-adding proxy` (frontend repo); then `verify level-1`
 
 - [ ] **3. Level 2: only key holders get in, and bad bookings are turned away**
@@ -37,7 +37,7 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   PRD ref: `prd.md > API Contract`, `prd.md > Booking Errors` (400, started, 404), `prd.md > Admin Reset` (wrong key → "Wrong API key"), `prd.md > States and Boundaries` (API unreachable, Permissions)
   Spec ref: `spec.md > Components` (API: Auth middleware, API: Error handling, API: Bookings steps 1, 2, 5, 6; Web: Book a Slot error mapping, Web: Admin Reset), `spec.md > Important Failure Modes` (422 / non-error body leaks)
   Build: `core/auth.py` constant-time middleware (exempts `/health`, runs before routing), the 422→400 override plus 404/405/bad-JSON handlers, `bookings/pipes.py` validation and normalisation, slot-exists and slot-started checks, `tests/test_level2_auth_validation.py` asserting status **and** body shape for every error, smoke lines for Level 2. Frontend: `messages.js` mappings, BookingForm error display, slot refresh on 404/started.
-  Verify (mechanical): `make tests` passes, including every Level 1 test, now sent with the key. Smoke passes locally, including no-key → 401 and bad-email → 400. A curl through the dev proxy (`localhost:5173/api/bookings`) with a bad email returns the 400 body.
+  Verify (mechanical): `make tests` passes, including every Level 1 test, now sent with the key. Smoke passes locally, including no-key → 401 and bad-email → 400. A curl through the dev proxy (`localhost:5180/api/bookings`) with a bad email returns the 400 body.
   Learner check: On the page, try booking with an empty name, then `not-an-email`, then a slot in the past (reset one in from Admin). Each should give a clear message with your inputs still in the form. In Admin, try a wrong key and see "Wrong API key". Then `curl localhost:8070/slots` with no key and see a 401.
   Commit: `Add Level 2: API key auth and booking validation` (API repo), `Show booking error messages` (frontend repo); then `verify level-2`
 
@@ -103,7 +103,7 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
 
 ## Hands-on Checkpoints
 
-- [ ] Early usable behavior explored — after slice 2 (the Level 1 page running locally): look, flow and copy feedback that shapes slices 3–9
+- [x] Early usable behavior explored — after slice 2 (the Level 1 page running locally): look, flow and copy feedback that shapes slices 3–9. Done: learner reset, booked, copied the id and found it, filtered by provider; "it works as expected", no changes requested.
 - [ ] Final kick-the-tires exploration and feedback completed — on the deployed URLs, after slice 9
 
 ## Final Review
@@ -127,4 +127,5 @@ Activity mode: [live app and editor, explicit static fallback, focused alternati
 - Local ports are 8070 (api) and 5452 (Postgres), not 8000/5432; checklist and spec updated — other local containers on this machine already hold 8000, 8010, 5432 and 5442.
 - The whole global error shape (validation → 400, unknown route 404, wrong method 405, bad JSON 400, 500 → `{"error"}`) and the unknown-slot 404 moved into slice 1 — Level 1 already needs `{"error"}` bodies and a 404 for a missing slot (otherwise the foreign key turns it into a 500). Slice 3 still adds the auth, field validation, started-slot check and the per-error tests.
 - Every endpoint now carries full OpenAPI docs (summary, description, every response status with an example; FastAPI's auto 422 removed), guarded by `tests/test_openapi_docs.py` — the learner asked for it after slice 1. Each later slice documents the statuses and endpoints it adds (401, 409, 422, 429 + `Retry-After`).
+- The dev proxy is a small Vite plugin that calls the same `api/_proxy.js` `forward()` as the Vercel function, instead of Vite's built-in `server.proxy`; the dev server runs on 5180 (5173 is taken locally). Local testing therefore exercises the exact proxy code that deploys, and its key rules are covered by `npm test` (`node --test`, no extra dependencies).
 

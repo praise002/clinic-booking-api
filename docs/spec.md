@@ -96,7 +96,7 @@ make tests                      # pytest against the compose db/redis (test data
 - **Concurrency against any URL:** `BASE_URL=... API_KEY=... uv run python scripts/concurrency.py` (fires 50 simultaneous bookings at one slot and asserts 1×201 + 49×409).
 
 **Frontend:**
-- Run `npm install && npm run dev`, then open http://localhost:5173.
+- Run `npm install && npm run dev`, then open http://localhost:5180.
 - In dev, `vite.config.js` proxies `/api/*` to `http://localhost:8070` and adds the key from `.env.local` (`API_KEY`, no `VITE_` prefix, so it never enters the bundle). Production behaves the same way, through the Vercel function.
 
 ### Deployed (required, `CLAUDE.md`)
