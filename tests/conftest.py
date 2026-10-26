@@ -15,6 +15,9 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or dotenv_values(".env")
     "TEST_DATABASE_URL", "postgresql+asyncpg://clinic:clinic@localhost:5452/clinic_test"
 )
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+# A fixed key, so tests never depend on (or leak) the developer's real one.
+API_KEY = "test-api-key"
+os.environ["API_KEY"] = API_KEY
 
 from alembic import command
 from alembic.config import Config
@@ -60,5 +63,17 @@ async def clean_tables(test_database) -> AsyncGenerator[None]:
 
 @pytest.fixture
 async def client() -> AsyncGenerator[AsyncClient]:
+    """A caller with the API key, like Koya's checks."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"X-API-Key": API_KEY},
+    ) as ac:
+        yield ac
+
+
+@pytest.fixture
+async def anon_client() -> AsyncGenerator[AsyncClient]:
+    """A caller with no API key."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac

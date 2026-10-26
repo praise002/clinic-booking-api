@@ -23,3 +23,14 @@ async def test_every_operation_documents_its_responses(client: AsyncClient):
                     assert schema == {"$ref": "#/components/schemas/ErrorResponse"}, (
                         f"{where} {code} isn't documented as {{error}}"
                     )
+            if path == "/health":
+                assert "401" not in operation["responses"], f"{where} needs no key"
+            else:
+                assert "401" in operation["responses"], f"{where} doesn't document its 401"
+                assert operation.get("security") == [{"ApiKeyAuth": []}], where
+
+    assert spec["components"]["securitySchemes"]["ApiKeyAuth"] == {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+    }

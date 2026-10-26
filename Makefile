@@ -5,8 +5,9 @@ include .env
 export
 endif
 
+# --renew-anon-volumes: compose otherwise keeps the old /app/.venv volume, hiding new dependencies.
 up_build:
-	docker compose up --build
+	docker compose up --build --renew-anon-volumes
 
 up:
 	docker compose up

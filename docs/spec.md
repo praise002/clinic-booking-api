@@ -127,7 +127,7 @@ From `prd.md > Look and Feel` and `scope.md > Inspiration & Identity`: plain and
 
 ### API: Auth middleware
 - Rejects any request whose `X-API-Key` is missing or not equal to `settings.API_KEY`, returning `401 {"error": "invalid or missing API key"}`. It uses a constant-time compare.
-- Exempt: `/health` only (Railway healthcheck). It runs before routing, so unknown paths also return 401 without a key.
+- Exempt: `/health` (Railway healthcheck) and the API docs (`/docs`, `/redoc`, `/openapi.json`). It runs before routing, so unknown paths also return 401 without a key.
 - PRD ref: `prd.md > API Contract`, `prd.md > Admin Reset`.
 
 ### API: Error handling
@@ -445,6 +445,8 @@ koya-assessment/
 - Rate limiting uses a **sliding** 60-second window (a sorted set + Lua script), confirmed at review.
 - Rate limiting **fails open** when Redis is down, confirmed at review.
 - `/reset` also clears the **rate-limit keys** and idempotency records, confirmed at review.
+
+- **The API docs load without the key** (`/docs`, `/redoc`, `/openapi.json`), alongside `/health`; every endpoint, and any unknown route, still needs it (learner decision in slice 3, after trying the strict version). The OpenAPI schema declares the `X-API-Key` scheme, so Swagger's **Authorize** box takes the key for trying endpoints, and documents a 401 on every endpoint but `/health`.
 
 **Implementation details derived from those choices (agent defaults, change freely):**
 - 429 and 401 are never stored as idempotent responses.

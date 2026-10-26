@@ -22,7 +22,10 @@ BOOKING_NOT_FOUND_DOC = error_doc(
     status_code=status.HTTP_201_CREATED,
     response_model=BookingResponse,
     summary="Book a slot",
-    description="Creates a confirmed booking for the slot.",
+    description=(
+        "Creates a confirmed booking for the slot. `name` is stored trimmed and `email` "
+        "trimmed and lower case. `slot_id` must name an existing slot that hasn't started."
+    ),
     openapi_extra={
         "requestBody": {
             "required": True,
@@ -32,7 +35,14 @@ BOOKING_NOT_FOUND_DOC = error_doc(
     responses={
         201: {"description": "Booked. The booking, with status `confirmed`."},
         400: error_doc(
-            "The body isn't valid JSON or isn't a JSON object.", "request body is not valid JSON"
+            "The body isn't a JSON object; `slot_id`, `name` or `email` is missing, empty or "
+            "not a string; the email isn't valid; or the slot has already started.",
+            "email is not valid",
+            "name is required",
+            "slot_id must be a string",
+            "slot has already started",
+            "request body is not valid JSON",
+            "request body must be a JSON object",
         ),
         404: error_doc("The slot doesn't exist.", "slot not found"),
         500: INTERNAL_ERROR_DOC,

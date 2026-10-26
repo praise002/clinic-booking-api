@@ -28,16 +28,35 @@ def check(name: str, condition: bool, detail: object = "") -> None:
         print(f"FAIL  {name}  {detail}")
 
 
+def is_error(response: httpx.Response, status: int, message: str | None = None) -> bool:
+    """The contract's error shape: the status, and a body of exactly {"error": <message>}."""
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    if response.status_code != status or not isinstance(body, dict) or set(body) != {"error"}:
+        return False
+    return message is None or body["error"] == message
+
+
 def iso(value: datetime) -> str:
     return value.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def main() -> int:
     client = httpx.Client(base_url=BASE_URL, headers={"X-API-Key": API_KEY}, timeout=15)
+    anon = httpx.Client(base_url=BASE_URL, timeout=15)
     start = (datetime.now(UTC) + timedelta(days=30)).replace(
         hour=9, minute=0, second=0, microsecond=0
     )
     slots = [
+        {
+            # Slots in the past are kept by /reset, and can't be booked (Level 2).
+            "id": "smoke-past",
+            "provider": "Dr Bola",
+            "start": "2020-01-01T09:00:00Z",
+            "end": "2020-01-01T09:30:00Z",
+        },
         {
             "id": "smoke-2",
             "provider": "Dr Bola",
@@ -54,8 +73,8 @@ def main() -> int:
     print(f"Smoke test against {BASE_URL}\n")
 
     # ── Level 1 ──────────────────────────────────────────────────────────────
-    r = client.get("/health")
-    check("GET /health is 200", r.status_code == 200, r.text)
+    r = anon.get("/health")
+    check("GET /health is 200, with no key", r.status_code == 200, r.text)
 
     r = client.post("/reset", json={"slots": slots})
     check(
@@ -67,8 +86,8 @@ def main() -> int:
     r = client.get("/slots")
     listed = r.json().get("slots", []) if r.status_code == 200 else []
     check(
-        "GET /slots is 200, earliest first",
-        [s["id"] for s in listed] == ["smoke-1", "smoke-2"],
+        "GET /slots is 200, earliest first, past slots kept",
+        [s["id"] for s in listed] == ["smoke-past", "smoke-1", "smoke-2"],
         r.text,
     )
     check(
@@ -84,9 +103,8 @@ def main() -> int:
         r.text,
     )
 
-    r = client.post(
-        "/bookings", json={"slot_id": "smoke-1", "name": "Ada Obi", "email": "ada@example.com"}
-    )
+    good_booking = {"slot_id": "smoke-1", "name": "Ada Obi", "email": "ada@example.com"}
+    r = client.post("/bookings", json=good_booking)
     booking = r.json()
     check(
         "POST /bookings is 201 confirmed",
@@ -114,14 +132,14 @@ def main() -> int:
     available = {s["id"]: s["available"] for s in r.json().get("slots", [])}
     check(
         "the booked slot is now unavailable",
-        available == {"smoke-1": False, "smoke-2": True},
+        available == {"smoke-past": True, "smoke-1": False, "smoke-2": True},
         available,
     )
 
     r = client.get("/bookings/00000000-0000-4000-8000-000000000000")
     check(
         "GET unknown booking is 404 {error}",
-        r.status_code == 404 and set(r.json()) == {"error"},
+        is_error(r, 404),
         r.text,
     )
 
@@ -130,9 +148,60 @@ def main() -> int:
     )
     check(
         "POST /bookings for an unknown slot is 404 {error}",
-        r.status_code == 404 and set(r.json()) == {"error"},
+        is_error(r, 404),
         r.text,
     )
+
+    r = client.get("/nowhere")
+    check("unknown route is 404 {error}", is_error(r, 404), r.text)
+
+    # ── Level 2 ──────────────────────────────────────────────────────────────
+    r = anon.get("/slots")
+    check("no API key is 401 {error}", is_error(r, 401), r.text)
+
+    r = anon.post("/bookings", json=good_booking, headers={"X-API-Key": "wrong"})
+    check("wrong API key is 401 {error}", is_error(r, 401), r.text)
+
+    r = anon.get("/nowhere")
+    check("unknown route without a key is 401", is_error(r, 401), r.text)
+
+    r = anon.get("/docs")
+    check("API docs load without a key", r.status_code == 200, r.status_code)
+
+    for name, body, message in [
+        ("missing name", {"slot_id": "smoke-2", "email": "ada@example.com"}, "name is required"),
+        ("empty email", {**good_booking, "email": "   "}, "email is required"),
+        ("invalid email", {**good_booking, "email": "not-an-email"}, "email is not valid"),
+        ("non-string slot_id", {**good_booking, "slot_id": 2}, "slot_id must be a string"),
+        (
+            "slot already started",
+            {**good_booking, "slot_id": "smoke-past"},
+            "slot has already started",
+        ),
+    ]:
+        r = client.post("/bookings", json=body)
+        check(f"POST /bookings, {name}: 400", is_error(r, 400, message), r.text)
+
+    r = client.post(
+        "/bookings", content=b"{not json", headers={"Content-Type": "application/json"}
+    )
+    check("POST /bookings, malformed JSON: 400", is_error(r, 400), r.text)
+
+    r = client.post(
+        "/bookings",
+        json={"slot_id": "smoke-2", "name": "  Ada Obi  ", "email": "  Ada@Example.COM "},
+    )
+    trimmed = r.json() if r.status_code == 201 else {}
+    check(
+        "name trimmed, email trimmed and lower-cased",
+        (trimmed.get("name"), trimmed.get("email")) == ("Ada Obi", "ada@example.com"),
+        r.text,
+    )
+
+    # ── Reset wipes bookings (last: it empties the target) ───────────────────
+    r = client.post("/reset", json={"slots": slots})
+    r = client.get(f"/bookings/{booking.get('id')}")
+    check("POST /reset deletes every booking", is_error(r, 404), r.text)
 
     print(f"\n{'All checks passed' if not failures else f'{failures} check(s) failed'}")
     return 1 if failures else 0

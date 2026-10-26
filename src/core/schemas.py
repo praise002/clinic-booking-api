@@ -9,12 +9,17 @@ class ErrorResponse(BaseModel):
     error: str = Field(description="A short, human-readable reason.", examples=["slot not found"])
 
 
-def error_doc(description: str, example: str) -> dict[str, Any]:
-    """An OpenAPI `responses` entry for an error status, with its example message."""
+def error_doc(description: str, *messages: str) -> dict[str, Any]:
+    """An OpenAPI `responses` entry for an error status, with one example per message."""
+    content: dict[str, Any] = (
+        {"example": {"error": messages[0]}}
+        if len(messages) == 1
+        else {"examples": {message: {"value": {"error": message}} for message in messages}}
+    )
     return {
         "model": ErrorResponse,
         "description": description,
-        "content": {"application/json": {"example": {"error": example}}},
+        "content": {"application/json": content},
     }
 
 
