@@ -193,3 +193,16 @@ async def test_a_rejected_booking_creates_nothing(client: AsyncClient, slots):
 
     available = {s["id"]: s["available"] for s in (await client.get("/slots")).json()["slots"]}
     assert available == {"past": True, "s1": True}
+
+
+async def test_the_root_url_redirects_to_the_docs_without_a_key(anon_client: AsyncClient):
+    response = await anon_client.get("/")
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/docs"
+
+
+async def test_the_redirect_is_not_part_of_the_documented_api(client: AsyncClient):
+    spec = (await client.get("/openapi.json")).json()
+
+    assert "/" not in spec["paths"]

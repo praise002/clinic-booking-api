@@ -453,6 +453,8 @@ koya-assessment/
 
 - **Hosting moved to Vercel + Neon + Upstash** (slice 9): Railway's Hobby plan (~$5/month) wasn't affordable, and Render's free tier sleeps for ~1 minute and deletes free Postgres after 30 days. All three new services are free, and the guarantees are unchanged because they live in Postgres and Redis.
 
+- **The root URL redirects to the docs** (`GET /` → `307 Location: /docs`, no key, left out of the OpenAPI schema), at the learner's request. Non-GET requests to `/` get `405 {"error"}` rather than 401.
+
 **Implementation details derived from those choices (agent defaults, change freely):**
 - 429 and 401 are never stored as idempotent responses.
 - `/health` is exempt from the key.

@@ -11,7 +11,8 @@ log = logging.getLogger(__name__)
 # Routes that work without the key: the host's healthcheck, and the API docs (they hold no
 # data; trying an endpoint from them needs the key, entered through Swagger's Authorize box).
 HEALTH_PATH = "/health"
-DOCS_PATHS = {"/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json"}
+# "/" only redirects to /docs.
+DOCS_PATHS = {"/", "/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json"}
 PUBLIC_PATHS = {HEALTH_PATH, *DOCS_PATHS}
 UNAUTHORIZED_MESSAGE = "invalid or missing API key"
 

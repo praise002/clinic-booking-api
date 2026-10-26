@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import RedirectResponse
 
 from src.bookings.router import router as bookings_router
 from src.core.auth import HEALTH_PATH, UNAUTHORIZED_MESSAGE, ApiKeyMiddleware
@@ -100,6 +101,11 @@ def create_app() -> FastAPI:
     )
     async def health():
         return {"status": "ok"}
+
+    # The bare URL opens the API docs. Left out of the schema: it isn't part of the API.
+    @app.get("/", include_in_schema=False)
+    async def root():
+        return RedirectResponse("/docs")
 
     app.include_router(slots_router)
     app.include_router(bookings_router)
