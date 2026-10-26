@@ -91,7 +91,7 @@ Slices follow Koya's levels in order (`scope.md > The POC Boundary`). Each level
   Learner check: On the page, try booking six times quickly with the same email (bad details are fine; they count). The sixth says how many seconds to wait. Then book with a different email straight away and it works.
   Commit: `Add Level 5: per-email rate limiting with Redis` (API repo), `Show rate-limit wait time` (frontend repo); then `verify level-5`
 
-- [ ] **9. Live: the API and the page on Vercel (Postgres on Neon, Redis on Upstash), proven at their https URLs**
+- [x] **9. Live: the API and the page on Vercel (Postgres on Neon, Redis on Upstash), proven at their https URLs**
   Becomes usable: The API at a Railway https URL, backed by Railway Postgres and Redis. The page at a Vercel https URL, calling the API through the key-adding function. Smoke and the 50-way concurrency proof pass against the live API, and bookings survive a redeploy. The README lists both URLs and explains how each guarantee works.
   Why now: Deployment is last, by the learner's choice. Everything it ships has already passed all five levels locally. Expect to resolve the deploy unknowns here (`spec.md > Decisions and Open Issues`, "To verify"): the `railway/iac` version, the `DATABASE_URL` scheme rewrite and asyncpg SSL, preDeploy migrations, the plan's resource limits, and whether Vercel's catch-all matches nested paths.
   PRD ref: `prd.md > API Contract` (survives a restart, smoke against the live URL), `prd.md > What We're Building`, `prd.md > States and Boundaries` (Permissions)
